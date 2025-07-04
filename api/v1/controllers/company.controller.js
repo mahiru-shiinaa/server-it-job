@@ -46,8 +46,11 @@ module.exports.login = async (req, res) => {
     const token = company.token;
     res.cookie("token", token, {
       httpOnly: true,
+      secure: true, // 👈 Bắt buộc khi khác domain & https
+      sameSite: "none", // 👈 Cho phép cross-origin
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
+
     res.json({ code: 200, message: "Login thành công" });
   } catch (error) {
     console.error(error);
@@ -134,10 +137,13 @@ module.exports.checkEmailOtp = async (req, res) => {
     company.deleted = false;
     await company.save();
     await Otp.findOneAndDelete({ email: email });
-    res.cookie("token", company.token, {
+    res.cookie("token", token, {
       httpOnly: true,
+      secure: true, // 👈 Bắt buộc khi khác domain & https
+      sameSite: "none", // 👈 Cho phép cross-origin
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
+
     res.status(200).json({ code: 200, message: "Xác minh thành công" });
   } catch (error) {
     console.error(error);
@@ -215,8 +221,10 @@ module.exports.edit = async (req, res) => {
     if (typeof req.body.quantityPeople === "string") {
       return res.status(400).json({ message: "Số lượng nhân sự phải là số" });
     }
-    if(people < 0) {
-      return res.status(400).json({ message: "Số lượng nhân sự phải lớn hơn 0" });
+    if (people < 0) {
+      return res
+        .status(400)
+        .json({ message: "Số lượng nhân sự phải lớn hơn 0" });
     }
     const company = await Company.findOneAndUpdate(
       { _id: req.company._id },
@@ -241,12 +249,10 @@ module.exports.changePassword = async (req, res) => {
         .json({ code: 400, message: "Mật khẩu cũ không chính xác" });
     }
     if (company.password === md5(newPassword)) {
-      return res
-        .status(400)
-        .json({
-          code: 400,
-          message: "Mật khẩu mới không được giống mật khẩu cũ",
-        });
+      return res.status(400).json({
+        code: 400,
+        message: "Mật khẩu mới không được giống mật khẩu cũ",
+      });
     }
     company.password = md5(newPassword);
     await company.save();
@@ -348,11 +354,9 @@ module.exports.resetPassword = async (req, res) => {
     resetToken: resetToken,
   });
   if (!resetTokenCheck) {
-    return res
-      .status(400)
-      .json({
-        message: "Dữ liệu check reset password lỗi, vui lòng làm lại từ đầu",
-      });
+    return res.status(400).json({
+      message: "Dữ liệu check reset password lỗi, vui lòng làm lại từ đầu",
+    });
   }
   const company = await Company.findOne({ email: email });
   if (!company) {
@@ -366,14 +370,15 @@ module.exports.resetPassword = async (req, res) => {
   company.password = md5(newPassword);
   await company.save();
   await ResetToken.findOneAndDelete({ email: email });
-  res.cookie("token", company.token, {
+  res.cookie("token", token, {
     httpOnly: true,
+    secure: true, // 👈 Bắt buộc khi khác domain & https
+    sameSite: "none", // 👈 Cho phép cross-origin
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
-  res
-    .status(200)
-    .json({
-      code: 200,
-      message: "Đổi mật khẩu thành công và đăng nhập thành công",
-    });
+
+  res.status(200).json({
+    code: 200,
+    message: "Đổi mật khẩu thành công và đăng nhập thành công",
+  });
 };
