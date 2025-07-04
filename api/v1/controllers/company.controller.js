@@ -141,12 +141,12 @@ module.exports.checkEmailOtp = async (req, res) => {
     company.deleted = false;
     await company.save();
     await Otp.findOneAndDelete({ email: email });
-res.cookie("token", token, {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",  // production thì secure: true
-  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-});
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", // production thì secure: true
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
 
     res.status(200).json({ code: 200, message: "Xác minh thành công" });
   } catch (error) {
@@ -221,15 +221,19 @@ module.exports.detail = async (req, res) => {
 //[PATCH] /api/v1/companys/me/edit
 module.exports.edit = async (req, res) => {
   try {
-    const people = req.body.quantityPeople;
-    if (typeof req.body.quantityPeople === "string") {
+    const people = Number(req.body.quantityPeople);
+
+    // Nếu không phải số hoặc là NaN
+    if (!Number.isFinite(people)) {
       return res.status(400).json({ message: "Số lượng nhân sự phải là số" });
     }
-    if (people < 0) {
+
+    if (people <= 0) {
       return res
         .status(400)
         .json({ message: "Số lượng nhân sự phải lớn hơn 0" });
     }
+
     const company = await Company.findOneAndUpdate(
       { _id: req.company._id },
       req.body,
@@ -374,12 +378,12 @@ module.exports.resetPassword = async (req, res) => {
   company.password = md5(newPassword);
   await company.save();
   await ResetToken.findOneAndDelete({ email: email });
-res.cookie("token", token, {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",  // production thì secure: true
-  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-});
+  res.cookie("token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production", // production thì secure: true
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
 
   res.status(200).json({
     code: 200,
