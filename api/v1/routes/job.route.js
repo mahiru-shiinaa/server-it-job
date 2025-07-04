@@ -6,6 +6,7 @@ const authMiddlewares = require("../middlewares/auth.middleware");
 // [PUBLIC]
 router.get("/", jobController.index); 
 router.get("/info/:id", jobController.info); 
+router.get("/jobs-to-company/:id", jobController.jobToCompany);
 
 // [PRIVATE]
 router.get("/me", authMiddlewares.requireAuth, jobController.jobByCompany);

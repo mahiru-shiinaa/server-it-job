@@ -25,6 +25,19 @@ module.exports.info = async (req, res) => {
     }
 };
 
+//[GET] /api/v1/jobs/jobs-to-company
+module.exports.jobToCompany = async (req, res) => {
+    try {
+        if(!req.params.id) {
+            return res.status(200).json([]);
+        }
+        const jobs = await Job.find({ idCompany: req.params.id, deleted: false });
+        res.status(200).json(jobs);
+    } catch (error) {
+        res.status(500).json(error);
+    }
+};
+
 //[GET] /api/v1/jobs/me
 module.exports.jobByCompany = async (req, res) => {
     try {
