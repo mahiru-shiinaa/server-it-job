@@ -8,7 +8,7 @@ const otpSchema = new Schema(
     type: String,
     expiresAt: {
       type: Date,
-      expires: 380,
+      expires: 300,
     },
   },
   {

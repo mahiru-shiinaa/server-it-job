@@ -7,7 +7,7 @@ const resetTokenSchema = new Schema(
         resetToken: String,
         expiresAt: {
             type: Date,
-            expires: 280,
+            expires: 300,
         },
     },
     {
