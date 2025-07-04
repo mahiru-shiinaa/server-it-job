@@ -46,8 +46,8 @@ module.exports.login = async (req, res) => {
     const token = company.token;
     res.cookie("token", token, {
       httpOnly: true,
-      secure: true, // 👈 Bắt buộc khi khác domain & https
-      sameSite: "none", // 👈 Cho phép cross-origin
+      secure: process.env.NODE_ENV === "production", // production thì secure: true
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
@@ -61,7 +61,11 @@ module.exports.login = async (req, res) => {
 //[GET] /api/v1/company/auth/logout
 module.exports.logout = async (req, res) => {
   try {
-    res.clearCookie("token");
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    });
     res.json({ code: 200, message: "Logout thành công" });
   } catch (error) {
     res.status(500).json(error);
@@ -137,12 +141,12 @@ module.exports.checkEmailOtp = async (req, res) => {
     company.deleted = false;
     await company.save();
     await Otp.findOneAndDelete({ email: email });
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: true, // 👈 Bắt buộc khi khác domain & https
-      sameSite: "none", // 👈 Cho phép cross-origin
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+res.cookie("token", token, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",  // production thì secure: true
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+});
 
     res.status(200).json({ code: 200, message: "Xác minh thành công" });
   } catch (error) {
@@ -370,12 +374,12 @@ module.exports.resetPassword = async (req, res) => {
   company.password = md5(newPassword);
   await company.save();
   await ResetToken.findOneAndDelete({ email: email });
-  res.cookie("token", token, {
-    httpOnly: true,
-    secure: true, // 👈 Bắt buộc khi khác domain & https
-    sameSite: "none", // 👈 Cho phép cross-origin
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+res.cookie("token", token, {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",  // production thì secure: true
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+});
 
   res.status(200).json({
     code: 200,
