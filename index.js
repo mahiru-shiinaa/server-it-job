@@ -19,7 +19,7 @@ app.use(cookieParser());
 //  Cho phép CORS
 app.use(
   cors({
-    origin: "http://localhost:3000", // ✅ Chỉ cho phép React app
+    origin: ["http://localhost:3000", "https://project-it-job-react.vercel.app"], // ✅ Chỉ cho phép React app
     credentials: true, //Cho phéo gửi request với cookie, phải có
   })
 ); //  cấu hình mặc định: cho phép tất cả origin
