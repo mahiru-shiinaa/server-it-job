@@ -1,6 +1,6 @@
-// validators/password.validator.js
 
-// Hàm kiểm tra độ mạnh của mật khẩu
+
+//  Hàm kiểm tra độ mạnh của mật khẩu
 const isStrongPassword = (password) => {
   const specialCharRegex = /[!@#$%^&*(),.?":{}|<>]/;
   const upperCaseRegex = /[A-Z]/;
@@ -11,8 +11,8 @@ const isStrongPassword = (password) => {
     return "Mật khẩu phải có ít nhất 8 ký tự";
   }
 
-  if (password.length > 12) {
-    return "Mật khẩu không được vượt quá 12 ký tự";
+  if (password.length > 20) {
+    return "Mật khẩu không được vượt quá 20 ký tự";
   }
 
   if (/\s/.test(password)) {
@@ -42,8 +42,22 @@ const isStrongPassword = (password) => {
   return null; // hợp lệ
 };
 
+//  Hàm kiểm tra độ dài chuỗi
+const checkLength = (field, value, min, max) => {
+  if (!value) return null;
 
-// Middleware: kiểm tra đăng nhập
+  if (value.length < min) {
+    return `${field} phải có ít nhất ${min} ký tự`;
+  }
+
+  if (value.length > max) {
+    return `${field} không được vượt quá ${max} ký tự`;
+  }
+
+  return null;
+};
+
+//  kiểm tra đăng nhập
 const checkLogin = (req, res, next) => {
   const { email, password } = req.body;
 
@@ -60,6 +74,11 @@ const checkLogin = (req, res, next) => {
     return res.status(400).json({ code: 400, message: "Email không hợp lệ" });
   }
 
+  const emailLengthError = checkLength("Email", email, 5, 100);
+  if (emailLengthError) {
+    return res.status(400).json({ code: 400, message: emailLengthError });
+  }
+
   const error = isStrongPassword(password);
   if (error) {
     return res.status(400).json({ code: 400, message: error });
@@ -68,18 +87,27 @@ const checkLogin = (req, res, next) => {
   next();
 };
 
-// Middleware: kiểm tra đăng ký
+//  kiểm tra đăng ký
 const checkRegister = (req, res, next) => {
   const { email, password, phone, companyName } = req.body;
 
-  if (!email || !password || !phone || !companyName) {
-    return res
-      .status(400)
-      .json({
-        code: 400,
-        message:
-          "Chưa nhập đủ thông tin (email, mật khẩu, số điện thoại, tên công ty)",
-      });
+  if (!email) {
+    return res.status(400).json({ code: 400, message: "Vui lòng nhập email" });
+  }
+  if (!phone) {
+    return res.status(400).json({ code: 400, message: "Vui lòng nhập số điện thoại" });
+  }
+  if (!companyName) {
+    return res.status(400).json({ code: 400, message: "Vui lòng nhập tên công ty" });
+  }
+
+  const emailLengthError = checkLength("Email", email, 5, 100);
+  const phoneLengthError = checkLength("Số điện thoại", phone, 9, 15);
+  const nameLengthError = checkLength("Tên công ty", companyName, 2, 100);
+
+  const lengthError = emailLengthError || phoneLengthError || nameLengthError;
+  if (lengthError) {
+    return res.status(400).json({ code: 400, message: lengthError });
   }
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -89,9 +117,7 @@ const checkRegister = (req, res, next) => {
 
   const phoneRegex = /^(0|\+84)[0-9]{9}$/;
   if (!phoneRegex.test(phone)) {
-    return res
-      .status(400)
-      .json({ code: 400, message: "Số điện thoại không hợp lệ" });
+    return res.status(400).json({ code: 400, message: "Số điện thoại không hợp lệ" });
   }
 
   const error = isStrongPassword(password);
@@ -102,6 +128,7 @@ const checkRegister = (req, res, next) => {
   next();
 };
 
+//  kiểm tra email quên mật khẩu
 const checkEmailResetPassword = (req, res, next) => {
   const { email } = req.body;
 
@@ -115,17 +142,15 @@ const checkEmailResetPassword = (req, res, next) => {
   }
 
   next();
-}
+};
 
-// Middleware: kiểm tra reset mật khẩu
+//  kiểm tra reset mật khẩu
 const checkResetPassword = (req, res, next) => {
   try {
     const newPassword = req.body.newPassword;
 
     if (!newPassword) {
-      return res
-        .status(400)
-        .json({ code: 400, message: "Chưa nhập mật khẩu mới" });
+      return res.status(400).json({ code: 400, message: "Chưa nhập mật khẩu mới" });
     }
 
     const error = isStrongPassword(newPassword);
@@ -140,29 +165,23 @@ const checkResetPassword = (req, res, next) => {
   }
 };
 
-// Middleware: kiểm tra đổi mật khẩu
+//  kiểm tra đổi mật khẩu
 const checkChangePassword = (req, res, next) => {
   const { oldPassword, newPassword } = req.body;
 
   if (!oldPassword) {
-    return res
-      .status(400)
-      .json({ code: 400, message: "Chưa nhập mật khẩu cũ" });
+    return res.status(400).json({ code: 400, message: "Chưa nhập mật khẩu cũ" });
   }
 
   if (!newPassword) {
-    return res
-      .status(400)
-      .json({ code: 400, message: "Chưa nhập mật khẩu mới" });
+    return res.status(400).json({ code: 400, message: "Chưa nhập mật khẩu mới" });
   }
 
   if (oldPassword === newPassword) {
-    return res
-      .status(400)
-      .json({
-        code: 400,
-        message: "Mật khẩu mới không được giống mật khẩu cũ",
-      });
+    return res.status(400).json({
+      code: 400,
+      message: "Mật khẩu mới không được giống mật khẩu cũ",
+    });
   }
 
   const error = isStrongPassword(newPassword);
@@ -173,28 +192,40 @@ const checkChangePassword = (req, res, next) => {
   next();
 };
 
+//  kiểm tra chỉnh sửa công ty
 const checkEditCompany = (req, res, next) => {
-  const { companyName, phone, email, address, description  } = req.body;
-  if(email !== req.company.email) {
-    return res
-      .status(400)
-      .json({ code: 400, message: "Không được thay đổi email" });
+  const { companyName, phone, email, address, description } = req.body;
+
+  if (email !== req.company.email) {
+    return res.status(400).json({ code: 400, message: "Không được thay đổi email" });
   }
-  if (!companyName || !phone  || !address || !description) {
-    return res
-      .status(400)
-      .json({ code: 400, message: "Chưa nhập đủ thông tin yêu cầu" });
+
+  if (!companyName || !phone || !address || !description) {
+    return res.status(400).json({ code: 400, message: "Chưa nhập đủ thông tin yêu cầu" });
+  }
+
+  const validations = [
+    checkLength("Tên công ty", companyName, 2, 100),
+    checkLength("Số điện thoại", phone, 9, 15),
+    checkLength("Địa chỉ", address, 5, 200),
+    checkLength("Mô tả", description, 10, 1000),
+  ];
+
+  const error = validations.find((msg) => msg !== null);
+  if (error) {
+    return res.status(400).json({ code: 400, message: error });
   }
 
   next();
-}
+};
 
-// Export
+//  Export tất cả middleware
 module.exports = {
   checkLogin,
   checkRegister,
+  checkLength,
   checkEmailResetPassword,
   checkResetPassword,
   checkChangePassword,
-  checkEditCompany
+  checkEditCompany,
 };
