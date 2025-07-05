@@ -262,6 +262,12 @@ module.exports.delete = async (req, res) => {
     // Cuối cùng xóa công ty
     await Company.findByIdAndDelete(req.company._id);
 
+     res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    });
+
     res.json({ code: 200, message: "Xóa tài khoản thành công" });
   } catch (error) {
     console.error(error);

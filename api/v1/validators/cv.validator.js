@@ -17,7 +17,6 @@ module.exports.checkCreateCV = (req, res, next) => {
       checkLength("Họ và tên", name, 2, 100),
       checkLength("Số điện thoại", phone, 9, 15),
       checkLength("Email", email, 5, 100),
-      checkLength("Thành phố", city, 2, 100),
       checkLength("Mô tả bản thân", description, 10, 2000),
       checkLength("Link dự án", linkProject, 5, 500),
     ];
