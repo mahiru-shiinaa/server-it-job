@@ -221,17 +221,19 @@ module.exports.detail = async (req, res) => {
 //[PATCH] /api/v1/companys/me/edit
 module.exports.edit = async (req, res) => {
   try {
-    const people = Number(req.body.quantityPeople);
+    if (req.body.quantityPeople) {
+      const people = Number(req.body.quantityPeople);
 
-    // Nếu không phải số hoặc là NaN
-    if (!Number.isFinite(people)) {
-      return res.status(400).json({ message: "Số lượng nhân sự phải là số" });
-    }
+      // Nếu không phải số hoặc là NaN
+      if (!Number.isFinite(people)) {
+        return res.status(400).json({ message: "Số lượng nhân sự phải là số" });
+      }
 
-    if (people <= 0) {
-      return res
-        .status(400)
-        .json({ message: "Số lượng nhân sự phải lớn hơn 0" });
+      if (people <= 0) {
+        return res
+          .status(400)
+          .json({ message: "Số lượng nhân sự phải lớn hơn 0" });
+      }
     }
 
     const company = await Company.findOneAndUpdate(
