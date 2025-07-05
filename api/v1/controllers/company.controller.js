@@ -78,10 +78,10 @@ module.exports.logout = async (req, res) => {
 module.exports.register = async (req, res) => {
   try {
     //1. Lấy thông tin người dùng
-    const { phone, email, password } = req.body;
+    const { phone, email, password, companyName } = req.body;
     //2. Kiểm tra tồn tại
     const checkCompany = await Company.findOne({
-      $or: [{ phone }, { email }],
+      $or: [{ phone }, { email }, { companyName }],
     });
     // Báo lỗi đã tồn tại
     if (checkCompany?.email === email) {
