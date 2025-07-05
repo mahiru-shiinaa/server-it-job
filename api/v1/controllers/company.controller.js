@@ -1,6 +1,8 @@
 const Company = require("../models/company.model");
 const Otp = require("../models/otp.model");
 const ResetToken = require("../models/reset-token.model");
+const Job = require("../models/job.model");
+const CV = require("../models/cv.model");
 const md5 = require("md5");
 const sendMailHelper = require("../../../helpers/sendMail");
 const generateHelper = require("../../../helpers/generate");
@@ -245,6 +247,25 @@ module.exports.edit = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[DELETE] /api/v1/companys/me/delete
+module.exports.delete = async (req, res) => {
+  try {
+    // Xóa tất cả CV thuộc về công ty
+    await CV.deleteMany({ idCompany: req.company._id });
+
+    // Xóa tất cả Job thuộc về công ty
+    await Job.deleteMany({ idCompany: req.company._id });
+
+    // Cuối cùng xóa công ty
+    await Company.findByIdAndDelete(req.company._id);
+
+    res.json({ code: 200, message: "Xóa tài khoản thành công" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
   }
 };
 

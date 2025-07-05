@@ -32,6 +32,7 @@ router.post("/auth/logout", companyController.logout);
 router.post("/auth/register/cancel-register", companyController.cancelRegister);
 
 router.get("/me", authMiddlewares.requireAuth, companyController.detail);
+router.delete("/me/delete", authMiddlewares.requireAuth, companyController.delete);
 router.patch("/me/edit", authMiddlewares.requireAuth, companyValidator.checkEditCompany, companyController.edit);
 router.patch("/me/change-password", authMiddlewares.requireAuth, companyValidator.checkChangePassword, companyController.changePassword);
 
