@@ -15,7 +15,7 @@ module.exports.checkCreateCV = (req, res, next) => {
     // Kiểm tra độ dài từng trường
     const validations = [
       checkLength("Họ và tên", name, 2, 100),
-      checkLength("Số điện thoại", phone, 9, 15),
+      checkLength("Số điện thoại", phone, 9, 11),
       checkLength("Email", email, 5, 100),
       checkLength("Mô tả bản thân", description, 10, 2000),
       checkLength("Link dự án", linkProject, 5, 500),

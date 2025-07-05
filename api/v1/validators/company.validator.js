@@ -102,7 +102,7 @@ const checkRegister = (req, res, next) => {
   }
 
   const emailLengthError = checkLength("Email", email, 5, 100);
-  const phoneLengthError = checkLength("Số điện thoại", phone, 9, 15);
+  const phoneLengthError = checkLength("Số điện thoại", phone, 9, 11);
   const nameLengthError = checkLength("Tên công ty", companyName, 2, 100);
 
   const lengthError = emailLengthError || phoneLengthError || nameLengthError;
@@ -206,7 +206,7 @@ const checkEditCompany = (req, res, next) => {
 
   const validations = [
     checkLength("Tên công ty", companyName, 2, 100),
-    checkLength("Số điện thoại", phone, 9, 15),
+    checkLength("Số điện thoại", phone, 9, 11),
     checkLength("Địa chỉ", address, 5, 200),
     checkLength("Mô tả", description, 10, 1000),
   ];
