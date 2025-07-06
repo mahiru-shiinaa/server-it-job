@@ -194,7 +194,7 @@ const checkChangePassword = (req, res, next) => {
 
 //  kiểm tra chỉnh sửa công ty
 const checkEditCompany = (req, res, next) => {
-  const { companyName, phone, email, address, description } = req.body;
+  const { companyName, phone, email, address, description, quantityPeople, detail, workingTime, website } = req.body;
 
   if (email !== req.company.email) {
     return res.status(400).json({ code: 400, message: "Không được thay đổi email" });
@@ -210,6 +210,18 @@ const checkEditCompany = (req, res, next) => {
     checkLength("Địa chỉ", address, 5, 200),
     checkLength("Mô tả", description, 10, 1000),
   ];
+  if(quantityPeople) {
+    validations.push(checkLength("Số người", quantityPeople, 1, 100));
+  }
+  if(detail) {
+    validations.push(checkLength("Chi tiết", detail, 10, 1000));
+  } 
+  if(workingTime) {
+    validations.push(checkLength("Thời gian làm việc", workingTime, 10, 200));
+  }
+  if(website) {
+    validations.push(checkLength("Website", website, 10, 200));
+  }
 
   const error = validations.find((msg) => msg !== null);
   if (error) {
