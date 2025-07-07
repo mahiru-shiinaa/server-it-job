@@ -1,5 +1,3 @@
-
-
 //  Hàm kiểm tra độ mạnh của mật khẩu
 const isStrongPassword = (password) => {
   const specialCharRegex = /[!@#$%^&*(),.?":{}|<>]/;
@@ -79,9 +77,10 @@ const checkLogin = (req, res, next) => {
     return res.status(400).json({ code: 400, message: emailLengthError });
   }
 
-  const error = isStrongPassword(password);
-  if (error) {
-    return res.status(400).json({ code: 400, message: error });
+  if (password.length < 8 || password.length > 20) {
+    return res
+      .status(400)
+      .json({ code: 400, message: "Độ dài mật khẩu không hợp lệ" });
   }
 
   next();
@@ -95,10 +94,14 @@ const checkRegister = (req, res, next) => {
     return res.status(400).json({ code: 400, message: "Vui lòng nhập email" });
   }
   if (!phone) {
-    return res.status(400).json({ code: 400, message: "Vui lòng nhập số điện thoại" });
+    return res
+      .status(400)
+      .json({ code: 400, message: "Vui lòng nhập số điện thoại" });
   }
   if (!companyName) {
-    return res.status(400).json({ code: 400, message: "Vui lòng nhập tên công ty" });
+    return res
+      .status(400)
+      .json({ code: 400, message: "Vui lòng nhập tên công ty" });
   }
 
   const emailLengthError = checkLength("Email", email, 5, 100);
@@ -117,7 +120,9 @@ const checkRegister = (req, res, next) => {
 
   const phoneRegex = /^(0|\+84)[0-9]{9}$/;
   if (!phoneRegex.test(phone)) {
-    return res.status(400).json({ code: 400, message: "Số điện thoại không hợp lệ" });
+    return res
+      .status(400)
+      .json({ code: 400, message: "Số điện thoại không hợp lệ" });
   }
 
   const error = isStrongPassword(password);
@@ -150,7 +155,9 @@ const checkResetPassword = (req, res, next) => {
     const newPassword = req.body.newPassword;
 
     if (!newPassword) {
-      return res.status(400).json({ code: 400, message: "Chưa nhập mật khẩu mới" });
+      return res
+        .status(400)
+        .json({ code: 400, message: "Chưa nhập mật khẩu mới" });
     }
 
     const error = isStrongPassword(newPassword);
@@ -170,11 +177,15 @@ const checkChangePassword = (req, res, next) => {
   const { oldPassword, newPassword } = req.body;
 
   if (!oldPassword) {
-    return res.status(400).json({ code: 400, message: "Chưa nhập mật khẩu cũ" });
+    return res
+      .status(400)
+      .json({ code: 400, message: "Chưa nhập mật khẩu cũ" });
   }
 
   if (!newPassword) {
-    return res.status(400).json({ code: 400, message: "Chưa nhập mật khẩu mới" });
+    return res
+      .status(400)
+      .json({ code: 400, message: "Chưa nhập mật khẩu mới" });
   }
 
   if (oldPassword === newPassword) {
@@ -194,14 +205,28 @@ const checkChangePassword = (req, res, next) => {
 
 //  kiểm tra chỉnh sửa công ty
 const checkEditCompany = (req, res, next) => {
-  const { companyName, phone, email, address, description, quantityPeople, detail, workingTime, website } = req.body;
+  const {
+    companyName,
+    phone,
+    email,
+    address,
+    description,
+    quantityPeople,
+    detail,
+    workingTime,
+    website,
+  } = req.body;
 
   if (email !== req.company.email) {
-    return res.status(400).json({ code: 400, message: "Không được thay đổi email" });
+    return res
+      .status(400)
+      .json({ code: 400, message: "Không được thay đổi email" });
   }
 
   if (!companyName || !phone || !address || !description) {
-    return res.status(400).json({ code: 400, message: "Chưa nhập đủ thông tin yêu cầu" });
+    return res
+      .status(400)
+      .json({ code: 400, message: "Chưa nhập đủ thông tin yêu cầu" });
   }
 
   const validations = [
@@ -210,16 +235,16 @@ const checkEditCompany = (req, res, next) => {
     checkLength("Địa chỉ", address, 5, 200),
     checkLength("Mô tả", description, 10, 1000),
   ];
-  if(quantityPeople) {
+  if (quantityPeople) {
     validations.push(checkLength("Số người", quantityPeople, 1, 100));
   }
-  if(detail) {
+  if (detail) {
     validations.push(checkLength("Chi tiết", detail, 10, 1000));
-  } 
-  if(workingTime) {
+  }
+  if (workingTime) {
     validations.push(checkLength("Thời gian làm việc", workingTime, 10, 200));
   }
-  if(website) {
+  if (website) {
     validations.push(checkLength("Website", website, 10, 200));
   }
 
