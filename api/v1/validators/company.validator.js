@@ -242,10 +242,10 @@ const checkEditCompany = (req, res, next) => {
     validations.push(checkLength("Chi tiết", detail, 10, 1000));
   }
   if (workingTime) {
-    validations.push(checkLength("Thời gian làm việc", workingTime, 10, 200));
+    validations.push(checkLength("Thời gian làm việc", workingTime, 1, 200));
   }
   if (website) {
-    validations.push(checkLength("Website", website, 10, 200));
+    validations.push(checkLength("Website", website, 1, 200));
   }
 
   const error = validations.find((msg) => msg !== null);
