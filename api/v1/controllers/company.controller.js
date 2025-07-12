@@ -262,7 +262,7 @@ module.exports.delete = async (req, res) => {
     // Cuối cùng xóa công ty
     await Company.findByIdAndDelete(req.company._id);
 
-     res.clearCookie("token", {
+    res.clearCookie("token", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
@@ -302,31 +302,37 @@ module.exports.changePassword = async (req, res) => {
 
 //[POST] api/v1/companys/password/forgot
 module.exports.forgotPassword = async (req, res) => {
-  const email = req.body.email;
-  if (!email) {
-    return res.status(400).json({ message: "Vui lòng nhập email" });
+  try {
+    const email = req.body.email;
+    if (!email) {
+      return res.status(400).json({ message: "Vui lòng nhập email" });
+    }
+    const user = await Company.findOne({ email: email });
+    if (!user) {
+      return res.status(400).json({ message: "Tài khoản không tồn tại" });
+    }
+    const otpRandom = generateHelper.generateRandomNumber();
+    const otbObject = {
+      email: email,
+      otp: otpRandom,
+      type: "forgot",
+      expiresAt: Date.now(),
+    };
+    const otp = new Otp(otbObject);
+    await otp.save();
+    const subject = "IT JOB - Mã OTP xác minh tài khoản";
+    sendMailHelper.sendMail(email, subject, otpRandom);
+    res.json({ code: 200, message: "OTP đã được gửi qua gmail của bạn" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
   }
-  const user = await Company.findOne({ email: email });
-  if (!user) {
-    return res.status(400).json({ message: "Tài khoản không tồn tại" });
-  }
-  const otpRandom = generateHelper.generateRandomNumber();
-  const otbObject = {
-    email: email,
-    otp: otpRandom,
-    type: "forgot",
-    expiresAt: Date.now(),
-  };
-  const otp = new Otp(otbObject);
-  await otp.save();
-  const subject = "IT JOB - Mã OTP xác minh tài khoản";
-  sendMailHelper.sendMail(email, subject, otpRandom);
-  res.json({ code: 200, message: "OTP đã được gửi qua gmail của bạn" });
 };
 
 //[POST] api/v1/companys/password/otp
 module.exports.otpPassword = async (req, res) => {
-  const { email, otp } = req.body;
+ try {
+   const { email, otp } = req.body;
   const otpCheck = await Otp.findOne({
     email: email,
     otp: otp,
@@ -353,6 +359,11 @@ module.exports.otpPassword = async (req, res) => {
     message: "Xác minh thành công, vui lòng đổi mật khẩu",
     resetToken: resetToken.resetToken,
   });
+ } catch (error) {
+   console.error(error);
+   res.status(500).json({ message: "Lỗi server" });
+  
+ }
 };
 
 //[POST] api/v1/companys/password/resendOtp
@@ -385,7 +396,8 @@ module.exports.resendOtp = async (req, res) => {
 
 //[POST] api/v1/companys/password/reset
 module.exports.resetPassword = async (req, res) => {
-  const { email, resetToken, newPassword } = req.body;
+  try {
+    const { email, resetToken, newPassword } = req.body;
   const resetTokenCheck = await ResetToken.findOne({
     email: email,
     resetToken: resetToken,
@@ -407,7 +419,7 @@ module.exports.resetPassword = async (req, res) => {
   company.password = md5(newPassword);
   await company.save();
   await ResetToken.findOneAndDelete({ email: email });
-  res.cookie("token", token, {
+  res.cookie("token", company.token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production", // production thì secure: true
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
@@ -418,4 +430,9 @@ module.exports.resetPassword = async (req, res) => {
     code: 200,
     message: "Đổi mật khẩu thành công và đăng nhập thành công",
   });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+    
+  }
 };
