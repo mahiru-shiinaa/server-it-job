@@ -1,0 +1,2599 @@
+# ==================================================
+# Path: E:\HTMLCSS\THUC_CHIEN\Thuc_Chien_11_Project_Cuoi_Khoa\server
+# Detected tech: javascript, typescript
+# ==================================================
+
+## DIRECTORY STRUCTURE
+```
+server/
+├── .git/
+├── api/
+│   └── v1/
+│       ├── controllers/
+│       │   ├── city.controller.js
+│       │   ├── company.controller.js
+│       │   ├── cv.controller.js
+│       │   ├── job.controller.js
+│       │   ├── tag.controller.js
+│       │   └── user.controller.js
+│       ├── middlewares/
+│       │   ├── auth.middleware.js
+│       │   ├── optional-auth.middleware.js
+│       │   └── user-auth.middleware.js
+│       ├── models/
+│       │   ├── city.model.js
+│       │   ├── company.model.js
+│       │   ├── cv.model.js
+│       │   ├── job.model.js
+│       │   ├── otp.model.js
+│       │   ├── reset-token.model.js
+│       │   ├── tag.model.js
+│       │   ├── user-cv.model.js
+│       │   └── user.model.js
+│       ├── routes/
+│       │   ├── city.route.js
+│       │   ├── company.route.js
+│       │   ├── cv.route.js
+│       │   ├── index.route.js
+│       │   ├── job.route.js
+│       │   ├── tag.route.js
+│       │   └── user.route.js
+│       └── validators/
+│           ├── company.validator.js
+│           ├── cv.validator.js
+│           ├── job.validator.js
+│           └── user.validator.js
+├── config/
+│   └── database.js
+├── helpers/
+│   ├── generate.js
+│   └── sendMail.js
+├── middlewares/
+├── node_modules/
+├── .env
+├── .gitignore
+├── index.js
+├── package-lock.json
+├── package.json
+└── source_dump.txt
+```
+
+## FILE CONTENTS
+
+### index.js
+```js
+const express = require("express");
+require("dotenv").config();
+const app = express();
+const database = require("./config/database");
+const cookieParser = require("cookie-parser");
+const port = process.env.PORT || 3000;
+
+const cors = require("cors");
+
+// Kết nối database
+database.connect();
+
+// Middleware để đọc body từ client, không cần body-parser nâng cao
+app.use(express.json()); // Đọc JSON từ client (axios/fetch gửi lên)
+app.use(express.urlencoded({ extended: true })); // Nếu dùng form HTML gửi lên
+
+app.use(cookieParser());
+
+//  Cho phép CORS
+app.use(
+  cors({
+    origin: ["http://localhost:3000", "https://project-it-job-react.vercel.app"], // ✅ Chỉ cho phép React app
+    credentials: true, //Cho phéo gửi request với cookie, phải có
+  })
+); //  cấu hình mặc định: cho phép tất cả origin
+const routesApiV1 = require("./api/v1/routes/index.route");
+routesApiV1(app);
+// Tương lai: thêm v2
+//const routesApiV2 = require("./api/v2/routes/index.route");  // 👉 index.route.js
+//routesApiV2(app);
+
+app.listen(port, () => {
+  console.log(`App listening on port ${port}`);
+});
+
+```
+
+### api\v1\controllers\city.controller.js
+```js
+const City = require("../models/city.model");
+//[GET] /api/v1/city
+module.exports.index = async (req, res) => {
+    try {
+        const citys = await City.find({});
+        res.status(200).json(citys);
+    } catch (error) {
+        res.status(500).json(error);   
+    }
+}
+```
+
+### api\v1\controllers\company.controller.js
+```js
+const Company = require("../models/company.model");
+const Otp = require("../models/otp.model");
+const ResetToken = require("../models/reset-token.model");
+const Job = require("../models/job.model");
+const CV = require("../models/cv.model");
+const md5 = require("md5");
+const sendMailHelper = require("../../../helpers/sendMail");
+const generateHelper = require("../../../helpers/generate");
+
+//[GET] /api/v1/companys
+module.exports.index = async (req, res) => {
+  try {
+    const companys = await Company.find({ deleted: false }).select(
+      " -password -token"
+    );
+    res.status(200).json(companys);
+  } catch (error) {
+    res.status(500).json(error);
+  }
+};
+
+//[GET] /api/v1/companys/info/:id
+module.exports.info = async (req, res) => {
+  try {
+    const company = await Company.findOne({
+      _id: req.params.id,
+      deleted: false,
+    }).select("-password -token");
+    res.json(company);
+  } catch (error) {
+    res.status(500).json("Lỗi server");
+  }
+};
+
+//[POST] /api/v1/companys/auth/login
+module.exports.login = async (req, res) => {
+  try {
+    const company = await Company.findOne({
+      email: req.body.email,
+      deleted: false,
+    });
+    if (!company) {
+      return res.status(400).json({ message: "Tài khoản không tồn tại" });
+    }
+    if (company.password !== md5(req.body.password)) {
+      return res.status(400).json({ message: "Sai mật khẩu" });
+    }
+    const token = company.token;
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", // production thì secure: true
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({ code: 200, message: "Login thành công" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[GET] /api/v1/company/auth/logout
+module.exports.logout = async (req, res) => {
+  try {
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    });
+    res.json({ code: 200, message: "Logout thành công" });
+  } catch (error) {
+    res.status(500).json(error);
+  }
+};
+
+//[POST] /api/v1/companys/auth/register
+module.exports.register = async (req, res) => {
+  try {
+    //1. Lấy thông tin người dùng
+    const { phone, email, password, companyName } = req.body;
+    //2. Kiểm tra tồn tại
+    const checkCompany = await Company.findOne({
+      $or: [{ phone }, { email }, { companyName }],
+    });
+    // Báo lỗi đã tồn tại
+    if (checkCompany?.email === email) {
+      return res.status(400).json({ message: "Email đã được sử dụng" });
+    }
+    if (checkCompany?.phone === phone) {
+      return res.status(400).json({ message: "Số điện thoại đã được sử dụng" });
+    }
+
+    //3. Tạo người dùng nhưng chưa duyệt
+    req.body.password = md5(password);
+    req.body.deleted = true;
+    const company = new Company(req.body);
+    await company.save();
+    //4. Tạo otp và gửi mail;
+    const otpRandom = generateHelper.generateRandomNumber();
+    const otbObject = {
+      email: email,
+      otp: otpRandom,
+      type: "register",
+      expiresAt: Date.now(),
+    };
+    const otp = new Otp(otbObject);
+    await otp.save();
+    const subject = "IT JOB - Mã OTP xác minh tài khoản";
+    sendMailHelper.sendMail(email, subject, otpRandom);
+    res.json({
+      code: 200,
+      message: "Đăng ký thành công, vui lòng xác minh tài khoản",
+      email: email,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[POST] /api/v1/companys/auth/register/checkEmailOtp
+module.exports.checkEmailOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!otp) {
+      return res.status(400).json({ message: "Vui lòng nhập otp" });
+    }
+    const otpCheck = await Otp.findOne({
+      email: email,
+      otp: otp,
+      type: "register",
+    });
+    if (!otpCheck) {
+      return res.status(400).json({ message: "Không tìm thấy otp" });
+    }
+    const company = await Company.findOne({ email: email });
+    if (!company) {
+      return res.status(400).json({ message: "Tài khoản không tồn tại" });
+    }
+    const token = generateHelper.generateToken();
+    company.token = token;
+    company.deleted = false;
+    await company.save();
+    await Otp.findOneAndDelete({ email: email });
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", // production thì secure: true
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.status(200).json({ code: 200, message: "Xác minh thành công" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[POST] /api/v1/companys/auth/register/cancelRegister
+module.exports.cancelRegister = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const company = await Company.findOne({ email: email, deleted: true });
+    if (!company) {
+      return res.status(400).json({ message: "Email không tồn tại" });
+    }
+    await Company.findOneAndDelete({ email: email, deleted: true });
+    await Otp.findOneAndDelete({ email: email });
+    res.status(200).json({ code: 200, message: "Hủy đăng ký thành công" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[POST] /api/v1/companys/auth/register/resendCheckEmailOtp
+module.exports.resendCheckEmailOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const company = await Company.findOne({ email: email });
+    if (!company) {
+      return res.status(400).json({ message: "Tài khoản không tồn tại" });
+    }
+    if (company.deleted === false) {
+      return res
+        .status(400)
+        .json({ message: "Tài khoản này đã được xác minh" });
+    }
+    const otp = generateHelper.generateRandomNumber();
+    await Otp.findOneAndDelete({ email: email, type: "register" });
+
+    const otbObject = {
+      email: email,
+      otp: otp,
+      type: "register",
+      expiresAt: Date.now(),
+    };
+    const otpCheck = new Otp(otbObject);
+    await otpCheck.save();
+    const subject = "IT JOB - Mã OTP xác minh tài khoản";
+    sendMailHelper.sendMail(email, subject, otp);
+    return res.status(200).json({ code: 200, message: "Mã OTP mới được gửi" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[GET] /api/v1/companys/me
+module.exports.detail = async (req, res) => {
+  try {
+    res.json({
+      code: 200,
+      message: "Thành công",
+      company: req.company,
+    });
+  } catch (error) {
+    res.status(500).json(error);
+  }
+};
+
+//[PATCH] /api/v1/companys/me/edit
+module.exports.edit = async (req, res) => {
+  try {
+    if (req.body.quantityPeople) {
+      const people = Number(req.body.quantityPeople);
+
+      // Nếu không phải số hoặc là NaN
+      if (!Number.isFinite(people)) {
+        return res.status(400).json({ message: "Số lượng nhân sự phải là số" });
+      }
+
+      if (people <= 0) {
+        return res
+          .status(400)
+          .json({ message: "Số lượng nhân sự phải lớn hơn 0" });
+      }
+    }
+
+    const company = await Company.findOneAndUpdate(
+      { _id: req.company._id },
+      req.body,
+      { new: true }
+    );
+    res.json({ code: 200, message: "Cập nhật thành công", company: company });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[DELETE] /api/v1/companys/me/delete
+module.exports.delete = async (req, res) => {
+  try {
+    // Xóa tất cả CV thuộc về công ty
+    await CV.deleteMany({ idCompany: req.company._id });
+
+    // Xóa tất cả Job thuộc về công ty
+    await Job.deleteMany({ idCompany: req.company._id });
+
+    // Cuối cùng xóa công ty
+    await Company.findByIdAndDelete(req.company._id);
+
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    });
+
+    res.json({ code: 200, message: "Xóa tài khoản thành công" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[POST] api/v1/companys/me/change-password
+module.exports.changePassword = async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const company = await Company.findOne({ _id: req.company._id });
+    if (company.password !== md5(oldPassword)) {
+      return res
+        .status(400)
+        .json({ code: 400, message: "Mật khẩu cũ không chính xác" });
+    }
+    if (company.password === md5(newPassword)) {
+      return res.status(400).json({
+        code: 400,
+        message: "Mật khẩu mới không được giống mật khẩu cũ",
+      });
+    }
+    company.password = md5(newPassword);
+    await company.save();
+    res.status(200).json({ code: 200, message: "Đổi mật khẩu thành công" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[POST] api/v1/companys/password/forgot
+module.exports.forgotPassword = async (req, res) => {
+  try {
+    const email = req.body.email;
+    if (!email) {
+      return res.status(400).json({ message: "Vui lòng nhập email" });
+    }
+    const user = await Company.findOne({ email: email });
+    if (!user) {
+      return res.status(400).json({ message: "Tài khoản không tồn tại" });
+    }
+    const otpRandom = generateHelper.generateRandomNumber();
+    const otbObject = {
+      email: email,
+      otp: otpRandom,
+      type: "forgot",
+      expiresAt: Date.now(),
+    };
+    const otp = new Otp(otbObject);
+    await otp.save();
+    const subject = "IT JOB - Mã OTP xác minh tài khoản";
+    sendMailHelper.sendMail(email, subject, otpRandom);
+    res.json({ code: 200, message: "OTP đã được gửi qua gmail của bạn" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[POST] api/v1/companys/password/otp
+module.exports.otpPassword = async (req, res) => {
+ try {
+   const { email, otp } = req.body;
+  const otpCheck = await Otp.findOne({
+    email: email,
+    otp: otp,
+    type: "forgot",
+  });
+  if (!otpCheck) {
+    return res.status(400).json({ message: "Sai otp" });
+  }
+  const company = await Company.findOne({ email: email });
+  if (!company) {
+    return res.status(400).json({ message: "Tài khoản không tồn tại" });
+  }
+  const tokenReset = generateHelper.generateToken();
+  const objectResetToken = {
+    email: email,
+    expiresAt: Date.now(),
+    resetToken: tokenReset,
+  };
+  const resetToken = new ResetToken(objectResetToken);
+  await resetToken.save();
+  await Otp.findOneAndDelete({ email: email }); // Đúng cú pháp
+  res.status(200).json({
+    code: 200,
+    message: "Xác minh thành công, vui lòng đổi mật khẩu",
+    resetToken: resetToken.resetToken,
+  });
+ } catch (error) {
+   console.error(error);
+   res.status(500).json({ message: "Lỗi server" });
+  
+ }
+};
+
+//[POST] api/v1/companys/password/resendOtp
+module.exports.resendOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const company = await Company.findOne({ email: email, deleted: false });
+    if (!company) {
+      return res.status(400).json({ message: "Tài khoản không tồn tại" });
+    }
+    const otp = generateHelper.generateRandomNumber();
+    await Otp.findOneAndDelete({ email: email, type: "forgot" });
+
+    const otbObject = {
+      email: email,
+      otp: otp,
+      type: "forgot",
+      expiresAt: Date.now(),
+    };
+    const otpCheck = new Otp(otbObject);
+    await otpCheck.save();
+    const subject = "IT JOB - Mã OTP xác minh tài khoản";
+    sendMailHelper.sendMail(email, subject, otp);
+    return res.status(200).json({ code: 200, message: "Mã OTP mới được gửi" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[POST] api/v1/companys/password/reset
+module.exports.resetPassword = async (req, res) => {
+  try {
+    const { email, resetToken, newPassword } = req.body;
+  const resetTokenCheck = await ResetToken.findOne({
+    email: email,
+    resetToken: resetToken,
+  });
+  if (!resetTokenCheck) {
+    return res.status(400).json({
+      message: "Dữ liệu check reset password lỗi, vui lòng làm lại từ đầu",
+    });
+  }
+  const company = await Company.findOne({ email: email });
+  if (!company) {
+    return res.status(400).json({ message: "Email không tồn tại" });
+  }
+  if (company.password === md5(newPassword)) {
+    return res
+      .status(400)
+      .json({ message: "Mật khẩu mới không được giống mật khẩu cũ" });
+  }
+  company.password = md5(newPassword);
+  await company.save();
+  await ResetToken.findOneAndDelete({ email: email });
+  res.cookie("token", company.token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production", // production thì secure: true
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+
+  res.status(200).json({
+    code: 200,
+    message: "Đổi mật khẩu thành công và đăng nhập thành công",
+  });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+    
+  }
+};
+
+```
+
+### api\v1\controllers\cv.controller.js
+```js
+const Cv = require("../models/cv.model");
+const sendMailHelper = require("../../../helpers/sendMail");
+
+//[POST] /api/v1/cv/create
+module.exports.create = async (req, res) => {
+  try {
+    const { selectedCvId, linkCV } = req.body;
+    
+    // Kiểm tra đã gửi CV cho job này chưa
+    const existingCv = await Cv.findOne({
+      email: req.body.email,
+      phone: req.body.phone,
+      idJob: req.body.idJob,
+      deleted: false,
+    });
+    
+    if (existingCv) {
+      return res.status(400).json({ code: 400, message: "Bạn đã gửi CV cho Job này" });
+    }
+
+    // Xử lý CV dựa trên loại user
+    if (selectedCvId) {
+      // User đã đăng ký - chọn CV từ kho
+      const UserCv = require("../models/user-cv.model");
+      const selectedCV = await UserCv.findOne({
+        _id: selectedCvId,
+        idUser: req.body.idUser,
+        deleted: false
+      });
+      
+      if (!selectedCV) {
+        return res.status(400).json({ 
+          code: 400, 
+          message: "CV không tồn tại hoặc không thuộc về bạn" 
+        });
+      }
+      
+      req.body.linkCV = selectedCV.cvUrl;
+      req.body.selectedCvId = selectedCvId;
+    } else if (linkCV) {
+      // Khách vãng lai - upload CV mới
+      req.body.linkCV = linkCV;
+      req.body.idUser = null;
+      req.body.selectedCvId = null;
+    } else {
+      return res.status(400).json({ 
+        code: 400, 
+        message: "Vui lòng chọn CV từ danh sách hoặc upload CV mới" 
+      });
+    }
+
+    const newCv = await Cv.create(req.body);
+    res.status(200).json({ 
+      code: 200, 
+      message: "Gửi CV thành công", 
+      cv: newCv 
+    });
+    
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[GET] /api/v1/cv
+module.exports.index = async (req, res) => {
+  try {
+    const idCompany = req.company._id;
+    const cvs = await Cv.find({ idCompany: idCompany, deleted: false });
+    res.status(200).json(cvs);
+  } catch (error) {
+    res.status(500).json(error);
+  }
+};
+
+//[DELETE] /api/v1/cv/delete/:id
+module.exports.delete = async (req, res) => {
+  try {
+    const cv = await Cv.findOne({
+      _id: req.params.id,
+      idCompany: req.company._id,
+      deleted: false,
+    });
+    if (cv) {
+      await Cv.updateOne(
+        { $and: [{ _id: req.params.id }, { idCompany: req.company._id }] },
+        { deleted: true, deletedAt: new Date() }
+      );
+    }
+    res.status(200).json({ code: 200, message: "Đã Xoá CV" });
+  } catch (error) {
+    res.status(500).json("Lỗi server");
+  }
+};
+
+//[GET] /api/v1/cv/detail/:id
+module.exports.detail = async (req, res) => {
+  try {
+    const cv = await Cv.findOne({
+      _id: req.params.id,
+      idCompany: req.company._id,
+      deleted: false,
+    });
+    res.status(200).json(cv);
+  } catch (error) {
+    res.status(500).json(error);
+  }
+};
+
+//[PATCH] /api/v1/cv/change-status/:id
+module.exports.changeStatus = async (req, res) => {
+  try {
+    const cv = await Cv.findByIdAndUpdate(
+      { _id: req.params.id, idCompany: req.company._id, deleted: false },
+      { status: 'read' }, // Cập nhật từ statusRead thành status với giá trị 'read'
+      { new: true }
+    );
+    res.status(200).json({ code: 200, message: "Cập nhập đã đọc", cv: cv });
+  } catch (error) {
+    res.status(500).json("Lỗi server");
+  }
+};
+
+//[POST] /api/v1/cv/reply/:id
+module.exports.reply = async (req, res) => {
+  try {
+    const { replyMessage } = req.body;
+    
+    if (!replyMessage) {
+      return res.status(400).json({ 
+        code: 400, 
+        message: "Vui lòng nhập nội dung phản hồi" 
+      });
+    }
+
+    const cv = await Cv.findOne({
+      _id: req.params.id,
+      idCompany: req.company._id,
+      deleted: false,
+    });
+
+    if (!cv) {
+      return res.status(404).json({ 
+        code: 404, 
+        message: "Không tìm thấy CV" 
+      });
+    }
+
+    // Cập nhật trạng thái CV thành đã phản hồi
+    await Cv.findByIdAndUpdate(req.params.id, { 
+      status: 'replied' 
+    });
+
+    // Tạo nội dung email phản hồi
+    const subject = `IT JOB - Phản hồi từ ${req.company.companyName}`;
+    const emailContent = `
+      <div style="max-width: 600px; margin: auto; border: 1px solid #eee; padding: 30px; font-family: Arial, sans-serif; background-color: #f9f9f9;">
+        <div style="text-align: center; padding-bottom: 20px;">
+          <h1 style="color: #2e5aac; margin-bottom: 5px;">IT JOB</h1>
+          <p style="margin: 0; color: #555;">Nền tảng kết nối việc làm ngành CNTT</p>
+        </div>
+        
+        <div style="background-color: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+          <h2 style="color: #333;">Phản hồi từ nhà tuyển dụng</h2>
+          <p style="font-size: 16px; color: #555;">Xin chào <strong>${cv.name}</strong>,</p>
+          
+          <div style="background-color: #f8f9fa; padding: 20px; border-left: 4px solid #2e5aac; margin: 20px 0;">
+            <p style="margin: 0;"><strong>Công ty:</strong> ${req.company.companyName}</p>
+            <p style="margin: 10px 0 0 0;"><strong>Email liên hệ:</strong> ${req.company.email}</p>
+            ${req.company.phone ? `<p style="margin: 10px 0 0 0;"><strong>Số điện thoại:</strong> ${req.company.phone}</p>` : ''}
+          </div>
+          
+          <div style="background-color: #fff; border: 1px solid #ddd; padding: 20px; border-radius: 6px; margin: 20px 0;">
+            <h3 style="margin-top: 0; color: #2e5aac;">Nội dung phản hồi:</h3>
+            <p style="line-height: 1.6; color: #333; white-space: pre-line;">${replyMessage}</p>
+          </div>
+          
+          <p style="color: #777; margin-top: 30px;">
+            Nếu bạn có bất kỳ câu hỏi nào, vui lòng liên hệ trực tiếp với công ty qua thông tin bên trên.
+          </p>
+          
+          <p style="margin-top: 30px; color: #999;">
+            Trân trọng,<br/>
+            Đội ngũ <strong>IT JOB</strong>
+          </p>
+        </div>
+        
+        <div style="text-align: center; font-size: 12px; color: #aaa; margin-top: 30px;">
+          © ${new Date().getFullYear()} IT JOB. All rights reserved.
+        </div>
+      </div>
+    `;
+
+    // Gửi email phản hồi
+    const nodemailer = require("nodemailer");
+    const transporter = nodemailer.createTransporter({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD,
+      },
+    });
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: cv.email,
+      subject: subject,
+      html: emailContent,
+    };
+
+    transporter.sendMail(mailOptions, function (error, info) {
+      if (error) {
+        console.log("Error sending reply email:", error);
+        return res.status(500).json({ 
+          code: 500, 
+          message: "Lỗi khi gửi email phản hồi" 
+        });
+      } else {
+        console.log("Reply email sent: " + info.response);
+        res.status(200).json({ 
+          code: 200, 
+          message: "Phản hồi đã được gửi thành công" 
+        });
+      }
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json("Lỗi server");
+  }
+};
+
+//[GET] /api/v1/cv/my-cv-list (thêm vào cv.controller.js)
+module.exports.getMyCvList = async (req, res) => {
+  try {
+    const UserCv = require("../models/user-cv.model");
+    const cvs = await UserCv.find({ 
+      idUser: req.user._id, 
+      deleted: false 
+    }).select('_id cvName createdAt cvUrl').sort({ createdAt: -1 });
+    
+    res.status(200).json({
+      code: 200,
+      message: "Lấy danh sách CV thành công",
+      cvs: cvs
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+```
+
+### api\v1\controllers\job.controller.js
+```js
+const Job = require("../models/job.model");
+
+//[GET] /api/v1/jobs
+module.exports.index = async (req, res) => {
+    try {
+        const find = {
+            deleted: false, 
+            status: true
+        }
+       const jobs = await Job.find(find);
+        
+        res.status(200).json(jobs);
+    } catch (error) {
+        res.status(500).json(error);
+    }
+};
+
+//[GET] /api/v1/jobs/info/:id
+module.exports.info = async (req, res) => {
+    try {
+        const job = await Job.findOne({ _id: req.params.id, deleted: false });
+        res.status(200).json(job);
+    } catch (error) {
+        res.status(500).json(error);
+    }
+};
+
+//[GET] /api/v1/jobs/jobs-to-company
+module.exports.jobToCompany = async (req, res) => {
+    try {
+        if(!req.params.id) {
+            return res.status(200).json([]);
+        }
+        const jobs = await Job.find({ idCompany: req.params.id, deleted: false });
+        res.status(200).json(jobs);
+    } catch (error) {
+        res.status(500).json(error);
+    }
+};
+
+//[GET] /api/v1/jobs/me
+module.exports.jobByCompany = async (req, res) => {
+    try {
+        const jobs = await Job.find({ idCompany: req.company._id, deleted: false });
+        if(jobs.length > 0) {
+            res.status(200).json(jobs);
+        } else {
+            res.status(200).json([]);
+        }
+    } catch (error) {
+        res.status(500).json("Lỗi server");
+    }
+};
+
+//[POST] /api/v1/jobs/create
+module.exports.create = async (req, res) => {
+    try {
+        req.body.idCompany = req.company._id;
+        const job = await Job.create(req.body);
+        res.status(200).json(job);
+    } catch (error) {
+        res.status(500).json(error);
+    }
+};
+
+//[PATCH] /api/v1/jobs/edit/:id
+module.exports.edit = async (req, res) => {
+    try {
+        const jobCheck = await Job.findOne({ _id: req.params.id, idCompany: req.company._id, deleted: false });
+        if(!jobCheck) {
+            return res.status(200).json({ code: 404, message: "Không tìm thấy job" });
+        }
+        const job = await Job.findByIdAndUpdate(req.params.id, req.body, { new: true });
+        res.status(200).json({ code: 200, message: "Cập nhật thành công", job: job });
+    } catch (error) {
+        res.status(500).json("Lỗi server");
+    }
+};
+
+//[DELETE] /api/v1/jobs/delete/:id
+module.exports.delete = async (req, res) => {
+    try {
+        const jobCheck = await Job.findOne({ _id: req.params.id, idCompany: req.company._id, deleted: false });
+        if(!jobCheck) {
+            return res.status(200).json({ code: 404, message: "Không tìm thấy job" });
+        }
+        await Job.findByIdAndUpdate(req.params.id, { deleted: true, deletedAt: new Date() });
+        res.status(200).json({ code: 200, message: "Xoá job thành công" });
+    } catch (error) {
+        res.status(500).json("Lỗi server");
+    }
+};
+```
+
+### api\v1\controllers\tag.controller.js
+```js
+const Tag = require("../models/tag.model");
+//[GET] /api/v1/tags
+module.exports.index = async (req, res) => {
+    try {
+        const tags = await Tag.find({});
+        res.status(200).json(tags);
+    } catch (error) {
+        res.status(500).json("Lỗi server");
+        console.log('error', error);
+    }
+};
+```
+
+### api\v1\controllers\user.controller.js
+```js
+const User = require("../models/user.model");
+const UserCv = require("../models/user-cv.model");
+const Cv = require("../models/cv.model");
+const Otp = require("../models/otp.model");
+const ResetToken = require("../models/reset-token.model");
+const md5 = require("md5");
+const sendMailHelper = require("../../../helpers/sendMail");
+const generateHelper = require("../../../helpers/generate");
+
+//[POST] /api/v1/users/auth/register
+module.exports.register = async (req, res) => {
+  try {
+    const { phone, email, password, fullName } = req.body;
+    
+    const checkUser = await User.findOne({
+      $or: [{ phone }, { email }],
+    });
+    
+    if (checkUser?.email === email) {
+      return res.status(400).json({ message: "Email đã được sử dụng" });
+    }
+    if (checkUser?.phone === phone) {
+      return res.status(400).json({ message: "Số điện thoại đã được sử dụng" });
+    }
+
+    req.body.password = md5(password);
+    req.body.deleted = true;
+    const user = new User(req.body);
+    await user.save();
+
+    const otpRandom = generateHelper.generateRandomNumber();
+    const otpObject = {
+      email: email,
+      otp: otpRandom,
+      type: "register",
+      expiresAt: Date.now(),
+    };
+    const otp = new Otp(otpObject);
+    await otp.save();
+    
+    const subject = "IT JOB - Mã OTP xác minh tài khoản";
+    sendMailHelper.sendMail(email, subject, otpRandom);
+    
+    res.json({
+      code: 200,
+      message: "Đăng ký thành công, vui lòng xác minh tài khoản",
+      email: email,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[POST] /api/v1/users/auth/register/checkEmailOtp
+module.exports.checkEmailOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    if (!otp) {
+      return res.status(400).json({ message: "Vui lòng nhập otp" });
+    }
+    
+    const otpCheck = await Otp.findOne({
+      email: email,
+      otp: otp,
+      type: "register",
+    });
+    if (!otpCheck) {
+      return res.status(400).json({ message: "Không tìm thấy otp" });
+    }
+    
+    const user = await User.findOne({ email: email });
+    if (!user) {
+      return res.status(400).json({ message: "Tài khoản không tồn tại" });
+    }
+    
+    const token = generateHelper.generateToken();
+    user.token = token;
+    user.deleted = false;
+    await user.save();
+    await Otp.findOneAndDelete({ email: email });
+    
+    res.cookie("userToken", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.status(200).json({ code: 200, message: "Xác minh thành công" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+
+
+//[POST] /api/v1/users/auth/login
+module.exports.login = async (req, res) => {
+  try {
+    const user = await User.findOne({
+      email: req.body.email,
+      deleted: false,
+    });
+    if (!user) {
+      return res.status(400).json({ message: "Tài khoản không tồn tại" });
+    }
+    if (user.password !== md5(req.body.password)) {
+      return res.status(400).json({ message: "Sai mật khẩu" });
+    }
+    
+    const token = user.token;
+    res.cookie("userToken", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.json({ code: 200, message: "Login thành công" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[GET] /api/v1/users/auth/logout
+module.exports.logout = async (req, res) => {
+  try {
+    res.clearCookie("userToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    });
+    res.json({ code: 200, message: "Logout thành công" });
+  } catch (error) {
+    res.status(500).json(error);
+  }
+};
+
+//[GET] /api/v1/users/me
+module.exports.detail = async (req, res) => {
+  try {
+    res.json({
+      code: 200,
+      message: "Thành công",
+      user: req.user,
+    });
+  } catch (error) {
+    res.status(500).json(error);
+  }
+};
+
+//[PATCH] /api/v1/users/me/edit
+module.exports.edit = async (req, res) => {
+  try {
+    const user = await User.findOneAndUpdate(
+      { _id: req.user._id },
+      req.body,
+      { new: true }
+    );
+    res.json({ code: 200, message: "Cập nhật thành công", user: user });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[DELETE] /api/v1/users/me/delete
+module.exports.delete = async (req, res) => {
+  try {
+    await UserCv.deleteMany({ idUser: req.user._id });
+    await Cv.deleteMany({ idUser: req.user._id });
+    await User.findByIdAndDelete(req.user._id);
+
+    res.clearCookie("userToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    });
+
+    res.json({ code: 200, message: "Xóa tài khoản thành công" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[POST] /api/v1/users/me/change-password
+module.exports.changePassword = async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const user = await User.findOne({ _id: req.user._id });
+    
+    if (user.password !== md5(oldPassword)) {
+      return res
+        .status(400)
+        .json({ code: 400, message: "Mật khẩu cũ không chính xác" });
+    }
+    if (user.password === md5(newPassword)) {
+      return res.status(400).json({
+        code: 400,
+        message: "Mật khẩu mới không được giống mật khẩu cũ",
+      });
+    }
+    
+    user.password = md5(newPassword);
+    await user.save();
+    res.status(200).json({ code: 200, message: "Đổi mật khẩu thành công" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[POST] /api/v1/users/password/forgot
+module.exports.forgotPassword = async (req, res) => {
+  try {
+    const email = req.body.email;
+    if (!email) {
+      return res.status(400).json({ message: "Vui lòng nhập email" });
+    }
+    
+    const user = await User.findOne({ email: email });
+    if (!user) {
+      return res.status(400).json({ message: "Tài khoản không tồn tại" });
+    }
+    
+    const otpRandom = generateHelper.generateRandomNumber();
+    const otpObject = {
+      email: email,
+      otp: otpRandom,
+      type: "forgot",
+      expiresAt: Date.now(),
+    };
+    const otp = new Otp(otpObject);
+    await otp.save();
+    
+    const subject = "IT JOB - Mã OTP xác minh tài khoản";
+    sendMailHelper.sendMail(email, subject, otpRandom);
+    res.json({ code: 200, message: "OTP đã được gửi qua gmail của bạn" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[POST] /api/v1/users/password/otp
+module.exports.otpPassword = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+    const otpCheck = await Otp.findOne({
+      email: email,
+      otp: otp,
+      type: "forgot",
+    });
+    if (!otpCheck) {
+      return res.status(400).json({ message: "Sai otp" });
+    }
+    
+    const user = await User.findOne({ email: email });
+    if (!user) {
+      return res.status(400).json({ message: "Tài khoản không tồn tại" });
+    }
+    
+    const tokenReset = generateHelper.generateToken();
+    const objectResetToken = {
+      email: email,
+      expiresAt: Date.now(),
+      resetToken: tokenReset,
+    };
+    const resetToken = new ResetToken(objectResetToken);
+    await resetToken.save();
+    await Otp.findOneAndDelete({ email: email });
+    
+    res.status(200).json({
+      code: 200,
+      message: "Xác minh thành công, vui lòng đổi mật khẩu",
+      resetToken: resetToken.resetToken,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[POST] /api/v1/users/password/reset
+module.exports.resetPassword = async (req, res) => {
+  try {
+    const { email, resetToken, newPassword } = req.body;
+    const resetTokenCheck = await ResetToken.findOne({
+      email: email,
+      resetToken: resetToken,
+    });
+    if (!resetTokenCheck) {
+      return res.status(400).json({
+        message: "Dữ liệu check reset password lỗi, vui lòng làm lại từ đầu",
+      });
+    }
+    
+    const user = await User.findOne({ email: email });
+    if (!user) {
+      return res.status(400).json({ message: "Email không tồn tại" });
+    }
+    if (user.password === md5(newPassword)) {
+      return res
+        .status(400)
+        .json({ message: "Mật khẩu mới không được giống mật khẩu cũ" });
+    }
+    
+    user.password = md5(newPassword);
+    await user.save();
+    await ResetToken.findOneAndDelete({ email: email });
+    
+    res.cookie("userToken", user.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    res.status(200).json({
+      code: 200,
+      message: "Đổi mật khẩu thành công và đăng nhập thành công",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[GET] /api/v1/users/my-cvs
+module.exports.getMyCvs = async (req, res) => {
+  try {
+    const cvs = await UserCv.find({ 
+      idUser: req.user._id, 
+      deleted: false 
+    }).sort({ createdAt: -1 });
+    
+    res.status(200).json(cvs);
+  } catch (error) {
+    res.status(500).json("Lỗi server");
+  }
+};
+
+//[POST] /api/v1/users/my-cvs/create
+module.exports.createMyCv = async (req, res) => {
+  try {
+    req.body.idUser = req.user._id;
+    const cv = await UserCv.create(req.body);
+    res.status(200).json({ code: 200, message: "Tạo CV thành công", cv: cv });
+  } catch (error) {
+    res.status(500).json("Lỗi server");
+  }
+};
+
+//[PATCH] /api/v1/users/my-cvs/edit/:id
+module.exports.editMyCv = async (req, res) => {
+  try {
+    const cv = await UserCv.findOne({
+      _id: req.params.id,
+      idUser: req.user._id,
+      deleted: false,
+    });
+    
+    if (!cv) {
+      return res.status(404).json({ message: "Không tìm thấy CV" });
+    }
+    
+    const updatedCv = await UserCv.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true }
+    );
+    
+    res.status(200).json({ 
+      code: 200, 
+      message: "Cập nhật CV thành công", 
+      cv: updatedCv 
+    });
+  } catch (error) {
+    res.status(500).json("Lỗi server");
+  }
+};
+
+//[DELETE] /api/v1/users/my-cvs/delete/:id
+module.exports.deleteMyCv = async (req, res) => {
+  try {
+    const cv = await UserCv.findOne({
+      _id: req.params.id,
+      idUser: req.user._id,
+      deleted: false,
+    });
+    
+    if (!cv) {
+      return res.status(404).json({ message: "Không tìm thấy CV" });
+    }
+    
+    await UserCv.findByIdAndUpdate(req.params.id, {
+      deleted: true,
+      deletedAt: new Date(),
+    });
+    
+    res.status(200).json({ code: 200, message: "Xóa CV thành công" });
+  } catch (error) {
+    res.status(500).json("Lỗi server");
+  }
+};
+
+//[GET] /api/v1/users/sent-cvs
+module.exports.getSentCvs = async (req, res) => {
+  try {
+    const cvs = await Cv.find({ 
+      idUser: req.user._id, 
+      deleted: false 
+    }).sort({ createdAt: -1 });
+    
+    res.status(200).json(cvs);
+  } catch (error) {
+    res.status(500).json("Lỗi server");
+  }
+};
+
+//[DELETE] /api/v1/users/sent-cvs/withdraw/:id
+module.exports.withdrawCv = async (req, res) => {
+  try {
+    const cv = await Cv.findOne({
+      _id: req.params.id,
+      idUser: req.user._id,
+      deleted: false,
+    });
+    
+    if (!cv) {
+      return res.status(404).json({ message: "Không tìm thấy CV đã gửi" });
+    }
+    
+    // Chỉ cho phép thu hồi CV nếu chưa được đọc
+    if (cv.status !== 'unread') {
+      return res.status(400).json({ 
+        message: "Không thể thu hồi CV đã được xem hoặc phản hồi" 
+      });
+    }
+    
+    await Cv.findByIdAndUpdate(req.params.id, {
+      deleted: true,
+      deletedAt: new Date(),
+    });
+    
+    res.status(200).json({ code: 200, message: "Thu hồi CV thành công" });
+  } catch (error) {
+    res.status(500).json("Lỗi server");
+  }
+};
+```
+
+### api\v1\middlewares\auth.middleware.js
+```js
+const Company = require("../models/company.model");
+module.exports.requireAuth = async (req, res, next) => {
+    try {
+            const token = req.cookies.token;
+    if(!token) {
+        return res.status(401).json({Code: 400, message: "Dữ liệu lỗi, vui lòng đăng nhập lại"});
+    }
+    const company = await Company.findOne({token: token, deleted: false}).select("-password -token");
+    if (!company) {
+        return res.status(401).json({Code: 400, message: "Tài khoản không tồn tại"});
+    }
+    req.company = company;
+    next();
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({message: "Lỗi server"});
+        
+    }
+}
+
+
+```
+
+### api\v1\middlewares\optional-auth.middleware.js
+```js
+const User = require("../models/user.model");
+
+// Middleware tùy chọn - không bắt buộc phải đăng nhập
+module.exports.optionalAuth = async (req, res, next) => {
+    try {
+        const token = req.cookies.userToken;
+        
+        if (token) {
+            const user = await User.findOne({
+                token: token, 
+                deleted: false
+            }).select("-password -token");
+            
+            if (user) {
+                req.user = user;
+                req.body.idUser = user._id.toString();
+            }
+        }
+        
+        // Nếu không có token hoặc user không tồn tại, vẫn cho phép tiếp tục
+        next();
+    } catch (error) {
+        console.error(error);
+        // Nếu có lỗi, vẫn cho phép tiếp tục như khách vãng lai
+        next();
+    }
+}
+```
+
+### api\v1\middlewares\user-auth.middleware.js
+```js
+const User = require("../models/user.model");
+
+module.exports.requireAuth = async (req, res, next) => {
+    try {
+        const token = req.cookies.userToken;
+        if(!token) {
+            return res.status(401).json({code: 400, message: "Dữ liệu lỗi, vui lòng đăng nhập lại"});
+        }
+        
+        const user = await User.findOne({token: token, deleted: false}).select("-password -token");
+        if (!user) {
+            return res.status(401).json({code: 400, message: "Tài khoản không tồn tại"});
+        }
+        
+        req.user = user;
+        next();
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({message: "Lỗi server"});
+    }
+}
+```
+
+### api\v1\models\city.model.js
+```js
+const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
+
+const citySchema = new Schema({
+    value: String,
+    key: Number
+    });
+const City = mongoose.model('City', citySchema, 'citys');
+module.exports =  City;
+```
+
+### api\v1\models\company.model.js
+```js
+const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
+
+const companySchema = new Schema({
+    companyName: String,
+    description: String,
+    phone: String,
+    email: String,
+    address: String,
+    password: String,
+    token: String,
+    quantityPeople: Number,
+    detail: String,
+    workingTime: String,
+    website: String,
+    deleted: {
+        type: Boolean,
+        default: false
+    },
+    deletedAt: Date
+}, {
+    // Dùng để thêm thời gian tạo và cập nhật sản phẩm tự động
+    timestamps: true
+});
+const Company = mongoose.model('Company', companySchema, 'companys');
+module.exports =  Company;
+```
+
+### api\v1\models\cv.model.js
+```js
+const mongoose = require("mongoose");
+const Schema = mongoose.Schema;
+
+const cvSchema = new Schema({
+    name: String,
+    phone: String,
+    email: String,
+    city: String,
+    description: String,
+    status: {
+        type: String,
+        enum: ['unread', 'read', 'replied'], // unread: chưa đọc, read: đã đọc, replied: đã phản hồi
+        default: 'unread'
+    },
+    linkProject: String,
+    linkCV: String, // URL của CV được gửi
+    selectedCvId: String, // ID của CV từ user_cvs collection (nếu user đã đăng ký)
+    idCompany: String,
+    idJob: String,
+    idUser: String, // ID của user (null nếu là khách vãng lai)
+    deleted: {
+        type: Boolean,
+        default: false
+    },
+    deletedAt: Date
+}, {
+    timestamps: true
+});
+
+const Cv = mongoose.model('Cv', cvSchema, 'cv');
+module.exports = Cv;
+```
+
+### api\v1\models\job.model.js
+```js
+const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
+
+const JobSchema = new Schema({
+    name: String,
+    description: String,
+    status: Boolean,
+    idCompany: String,
+    tags: Array,
+    salary: String,
+    city: Array,
+    deleted: {
+        type: Boolean,
+        default: false
+    },
+    deletedAt: Date
+}, {
+    // Dùng để thêm thời gian tạo và cập nhật sản phẩm tự động
+    timestamps: true
+});
+const Job = mongoose.model('Job', JobSchema, 'jobs');
+module.exports =  Job;
+
+
+```
+
+### api\v1\models\otp.model.js
+```js
+const mongoose = require("mongoose");
+const Schema = mongoose.Schema;
+
+const otpSchema = new Schema(
+  {
+    email: String,
+    otp: String,
+    type: String,
+    expiresAt: {
+      type: Date,
+      expires: 300,
+    },
+  },
+  {
+    // Dùng để thêm thời gian tạo và cập nhật sản phẩm tự động
+    timestamps: true,
+  }
+);
+const Otp = mongoose.model("Otp", otpSchema, "otps");
+module.exports = Otp;
+
+```
+
+### api\v1\models\reset-token.model.js
+```js
+const mongoose = require("mongoose");
+const Schema = mongoose.Schema;
+
+const resetTokenSchema = new Schema(
+    {
+        email: String,
+        resetToken: String,
+        expiresAt: {
+            type: Date,
+            expires: 300,
+        },
+    },
+    {
+        // Dùng để thêm thời gian tạo và cập nhật sản phẩm tự động
+        timestamps: true,
+    }
+);
+const ResetToken = mongoose.model("ResetToken", resetTokenSchema, "reset-tokens");
+module.exports = ResetToken;
+```
+
+### api\v1\models\tag.model.js
+```js
+const mongoose = require("mongoose");
+const Schema = mongoose.Schema;
+
+const tagSchema = new Schema({
+    value: String,
+    key: Number,
+    deleted: {
+        type: Boolean,
+        default: false
+    },
+    deletedAt: Date
+}, {
+    // Dùng để thêm thời gian tạo và cập nhật sản phẩm tự động
+    timestamps: true
+});
+const Tag = mongoose.model('Tag', tagSchema, 'tags');
+module.exports =  Tag;
+```
+
+### api\v1\models\user-cv.model.js
+```js
+const mongoose = require("mongoose");
+const Schema = mongoose.Schema;
+
+const userCvSchema = new Schema({
+    cvName: String,
+    cvUrl: String,
+    idUser: String,
+    deleted: {
+        type: Boolean,
+        default: false
+    },
+    deletedAt: Date
+}, {
+    timestamps: true
+});
+
+const UserCv = mongoose.model('UserCv', userCvSchema, 'user_cvs');
+module.exports = UserCv;
+```
+
+### api\v1\models\user.model.js
+```js
+const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
+
+const userSchema = new Schema({
+    fullName: String,
+    phone: String,
+    email: String,
+    password: String,
+    token: String,
+    city: String,
+    address: String,
+    dateOfBirth: Date,
+    avatar: String,
+    description: String,
+    linkProject: String, // New field added
+    deleted: {
+        type: Boolean,
+        default: false
+    },
+    deletedAt: Date
+}, {
+    timestamps: true
+});
+
+const User = mongoose.model('User', userSchema, 'users');
+module.exports = User;
+```
+
+### api\v1\routes\city.route.js
+```js
+const  express  = require("express");
+const router = express.Router();
+const cityController = require("../controllers/city.controller");
+
+router.get("/", cityController.index); 
+
+module.exports = router;
+```
+
+### api\v1\routes\company.route.js
+```js
+const express = require("express");
+const router = express.Router();
+const companyController = require("../controllers/company.controller");
+const authMiddlewares = require("../middlewares/auth.middleware");
+const companyValidator = require("../validators/company.validator");
+
+
+// middlewares/otpLimiter.js
+const rateLimit = require("express-rate-limit");
+//set thời gian giãn cách gửi request
+const otpLimiterByEmail = rateLimit({
+  windowMs: 60 * 1000, // 60 giây
+  max: 1,              // Tối đa 1 request trong 60 giây
+  keyGenerator: (req) => req.body.email || req.ip, // Ưu tiên giới hạn theo email
+  message: {
+    code: 429,
+    message: "Bạn chỉ được yêu cầu OTP mỗi 60 giây.",
+  },
+  skipFailedRequests: true, // Không tính những request bị lỗi trước đó (VD: nhập sai định dạng)
+});
+
+
+
+router.get("/", companyController.index); 
+router.get("/info/:id", companyController.info); 
+
+router.post("/auth/login", companyValidator.checkLogin, companyController.login);
+router.post("/auth/register", companyValidator.checkRegister, companyController.register);
+router.post("/auth/register/checkEmailOtp", companyController.checkEmailOtp);
+router.post("/auth/register/resendCheckEmailOtp", otpLimiterByEmail, companyController.resendCheckEmailOtp);
+router.post("/auth/logout", companyController.logout);
+router.post("/auth/register/cancel-register", companyController.cancelRegister);
+
+router.get("/me", authMiddlewares.requireAuth, companyController.detail);
+router.delete("/me/delete", authMiddlewares.requireAuth, companyController.delete);
+router.patch("/me/edit", authMiddlewares.requireAuth, companyValidator.checkEditCompany, companyController.edit);
+router.patch("/me/change-password", authMiddlewares.requireAuth, companyValidator.checkChangePassword, companyController.changePassword);
+
+router.post("/password/forgot", companyValidator.checkEmailResetPassword, otpLimiterByEmail, companyController.forgotPassword);
+router.post("/password/otp", companyController.otpPassword);
+router.post("/password/resendOtp", companyValidator.checkEmailResetPassword, otpLimiterByEmail, companyController.resendOtp);
+router.post("/password/reset", companyValidator.checkResetPassword, companyController.resetPassword);
+
+module.exports = router;
+```
+
+### api\v1\routes\cv.route.js
+```js
+const express = require("express");
+const router = express.Router();
+const cvController = require("../controllers/cv.controller");
+const authMiddlewares = require("../middlewares/auth.middleware");
+const userAuthMiddleware = require("../middlewares/user-auth.middleware");
+const optionalAuthMiddleware = require("../middlewares/optional-auth.middleware");
+const cvValidator = require("../validators/cv.validator");
+
+// Public routes - có thể là user đã đăng ký hoặc khách vãng lai
+router.post("/create", optionalAuthMiddleware.optionalAuth, cvValidator.checkCreateCV, cvController.create);
+
+// Company routes  
+router.get("/", authMiddlewares.requireAuth, cvController.index); 
+router.delete("/delete/:id", authMiddlewares.requireAuth, cvController.delete);
+router.get("/detail/:id", authMiddlewares.requireAuth, cvController.detail);
+router.patch("/change-status/:id", authMiddlewares.requireAuth, cvController.changeStatus);
+router.post("/reply/:id", authMiddlewares.requireAuth, cvController.reply);
+
+// User routes - để lấy danh sách CV cho dropdown
+router.get("/my-cv-list", userAuthMiddleware.requireAuth, cvController.getMyCvList);
+
+module.exports = router;
+```
+
+### api\v1\routes\index.route.js
+```js
+const jobRoutes = require("./job.route");
+const cityRoutes = require("./city.route");
+const companyRoutes = require("./company.route");
+const tagRoutes = require("./tag.route");
+const cvRoutes = require("./cv.route");
+const userRoutes = require("./user.route");
+
+module.exports = (app) => {
+    const version = "/api/v1";
+    
+    app.use(version + "/jobs", jobRoutes);
+    app.use(version + "/city", cityRoutes);
+    app.use(version + "/companys", companyRoutes);
+    app.use(version + "/tags", tagRoutes);
+    app.use(version + "/cv", cvRoutes);
+    app.use(version + "/users", userRoutes);
+}
+```
+
+### api\v1\routes\job.route.js
+```js
+const express = require("express");
+const router = express.Router();
+const jobController = require("../controllers/job.controller");
+const jobValidator = require("../validators/job.validator");
+const authMiddlewares = require("../middlewares/auth.middleware");
+// [PUBLIC]
+router.get("/", jobController.index); 
+router.get("/info/:id", jobController.info); 
+router.get("/jobs-to-company/:id", jobController.jobToCompany);
+
+// [PRIVATE]
+router.get("/me", authMiddlewares.requireAuth, jobController.jobByCompany);
+router.post("/create", authMiddlewares.requireAuth, jobValidator.checkJob, jobController.create);
+router.patch("/edit/:id", authMiddlewares.requireAuth, jobValidator.checkJob, jobController.edit);
+router.delete("/delete/:id", authMiddlewares.requireAuth, jobController.delete);
+module.exports = router;
+
+```
+
+### api\v1\routes\tag.route.js
+```js
+const express = require("express");
+const router = express.Router();
+const tagController = require("../controllers/tag.controller");
+
+router.get("/", tagController.index); 
+
+module.exports = router;
+```
+
+### api\v1\routes\user.route.js
+```js
+const express = require("express");
+const router = express.Router();
+const userController = require("../controllers/user.controller");
+const userAuthMiddleware = require("../middlewares/user-auth.middleware");
+const userValidator = require("../validators/user.validator");
+
+// Rate limiter for OTP requests
+const rateLimit = require("express-rate-limit");
+const otpLimiterByEmail = rateLimit({
+  windowMs: 60 * 1000, // 60 giây
+  max: 1,              // Tối đa 1 request trong 60 giây
+  keyGenerator: (req) => req.body.email || req.ip,
+  message: {
+    code: 429,
+    message: "Bạn chỉ được yêu cầu OTP mới 60 giây.",
+  },
+  skipFailedRequests: true,
+});
+
+// Authentication routes
+router.post("/auth/register", userValidator.checkRegister, userController.register);
+router.post("/auth/register/checkEmailOtp", userController.checkEmailOtp);
+router.post("/auth/register/resendCheckEmailOtp", otpLimiterByEmail, userController.resendCheckEmailOtp);
+router.post("/auth/login", userValidator.checkLogin, userController.login);
+router.post("/auth/logout", userController.logout);
+router.post("/auth/register/cancel-register", userController.cancelRegister);
+
+// Profile management routes
+router.get("/me", userAuthMiddleware.requireAuth, userController.detail);
+router.patch("/me/edit", userAuthMiddleware.requireAuth, userValidator.checkEditUser, userController.edit);
+router.delete("/me/delete", userAuthMiddleware.requireAuth, userController.delete);
+router.patch("/me/change-password", userAuthMiddleware.requireAuth, userValidator.checkChangePassword, userController.changePassword);
+
+// Password reset routes
+router.post("/password/forgot", userValidator.checkEmailResetPassword, otpLimiterByEmail, userController.forgotPassword);
+router.post("/password/otp", userController.otpPassword);
+router.post("/password/resendOtp", userValidator.checkEmailResetPassword, otpLimiterByEmail, userController.resendOtp);
+router.post("/password/reset", userValidator.checkResetPassword, userController.resetPassword);
+
+// My CVs management routes
+router.get("/my-cvs", userAuthMiddleware.requireAuth, userController.getMyCvs);
+router.post("/my-cvs/create", userAuthMiddleware.requireAuth, userValidator.checkMyCv, userController.createMyCv);
+router.patch("/my-cvs/edit/:id", userAuthMiddleware.requireAuth, userValidator.checkMyCv, userController.editMyCv);
+router.delete("/my-cvs/delete/:id", userAuthMiddleware.requireAuth, userController.deleteMyCv);
+
+// Sent CVs management routes
+router.get("/sent-cvs", userAuthMiddleware.requireAuth, userController.getSentCvs);
+router.delete("/sent-cvs/withdraw/:id", userAuthMiddleware.requireAuth, userController.withdrawCv);
+
+module.exports = router;
+```
+
+### api\v1\validators\company.validator.js
+```js
+// Hàm kiểm tra độ mạnh của mật khẩu
+const isStrongPassword = (password) => {
+  const specialCharRegex = /[!@#$%^&*(),.?":{}|<>]/;
+  const upperCaseRegex = /[A-Z]/;
+  const lowerCaseRegex = /[a-z]/;
+  const numberRegex = /[0-9]/;
+
+  if (password.length < 8) {
+    return "Mật khẩu phải có ít nhất 8 ký tự";
+  }
+
+  if (password.length > 20) {
+    return "Mật khẩu không được vượt quá 20 ký tự";
+  }
+
+  if (/\s/.test(password)) {
+    return "Mật khẩu không được chứa ký tự trống (space)";
+  }
+
+  if (!upperCaseRegex.test(password)) {
+    return "Mật khẩu phải chứa ít nhất một chữ cái viết hoa";
+  }
+
+  if (!lowerCaseRegex.test(password)) {
+    return "Mật khẩu phải chứa ít nhất một chữ cái viết thường";
+  }
+
+  if (!numberRegex.test(password)) {
+    return "Mật khẩu phải chứa ít nhất một số";
+  }
+
+  if (!specialCharRegex.test(password[password.length - 1])) {
+    return "Ký tự cuối của mật khẩu phải là ký tự đặc biệt";
+  }
+
+  if (password[0] !== password[0].toUpperCase()) {
+    return "Ký tự đầu tiên của mật khẩu phải viết hoa";
+  }
+
+  return null; // hợp lệ
+};
+
+// Hàm kiểm tra độ dài chuỗi
+const checkLength = (field, value, min, max) => {
+  if (!value) return null;
+
+  if (value.length < min) {
+    return `${field} phải có ít nhất ${min} ký tự`;
+  }
+
+  if (value.length > max) {
+    return `${field} không được vượt quá ${max} ký tự`;
+  }
+
+  return null;
+};
+
+// kiểm tra đăng nhập
+const checkLogin = (req, res, next) => {
+  const { email, password } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ code: 400, message: "Chưa nhập email" });
+  }
+
+  if (!password) {
+    return res.status(400).json({ code: 400, message: "Chưa nhập mật khẩu" });
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ code: 400, message: "Email không hợp lệ" });
+  }
+
+  const emailLengthError = checkLength("Email", email, 5, 100);
+  if (emailLengthError) {
+    return res.status(400).json({ code: 400, message: emailLengthError });
+  }
+
+  if (password.length < 8 || password.length > 20) {
+    return res
+      .status(400)
+      .json({ code: 400, message: "Độ dài mật khẩu không hợp lệ" });
+  }
+
+  next();
+};
+
+// kiểm tra đăng ký
+const checkRegister = (req, res, next) => {
+  const { email, password, phone, companyName } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ code: 400, message: "Vui lòng nhập email" });
+  }
+  if (!phone) {
+    return res
+      .status(400)
+      .json({ code: 400, message: "Vui lòng nhập số điện thoại" });
+  }
+  if (!companyName) {
+    return res
+      .status(400)
+      .json({ code: 400, message: "Vui lòng nhập tên công ty" });
+  }
+
+  const emailLengthError = checkLength("Email", email, 5, 100);
+  const phoneLengthError = checkLength("Số điện thoại", phone, 9, 11);
+  const nameLengthError = checkLength("Tên công ty", companyName, 2, 100);
+
+  const lengthError = emailLengthError || phoneLengthError || nameLengthError;
+  if (lengthError) {
+    return res.status(400).json({ code: 400, message: lengthError });
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ code: 400, message: "Email không hợp lệ" });
+  }
+
+  const phoneRegex = /^(0|\+84)[0-9]{9}$/;
+  if (!phoneRegex.test(phone)) {
+    return res
+      .status(400)
+      .json({ code: 400, message: "Số điện thoại không hợp lệ" });
+  }
+
+  const error = isStrongPassword(password);
+  if (error) {
+    return res.status(400).json({ code: 400, message: error });
+  }
+
+  next();
+};
+
+// kiểm tra email quên mật khẩu
+const checkEmailResetPassword = (req, res, next) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ code: 400, message: "Chưa nhập email" });
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ code: 400, message: "Email không hợp lệ" });
+  }
+
+  next();
+};
+
+// kiểm tra reset mật khẩu
+const checkResetPassword = (req, res, next) => {
+  try {
+    const newPassword = req.body.newPassword;
+
+    if (!newPassword) {
+      return res
+        .status(400)
+        .json({ code: 400, message: "Chưa nhập mật khẩu mới" });
+    }
+
+    const error = isStrongPassword(newPassword);
+    if (error) {
+      return res.status(400).json({ code: 400, message: error });
+    }
+
+    next();
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+// kiểm tra đổi mật khẩu
+const checkChangePassword = (req, res, next) => {
+  const { oldPassword, newPassword } = req.body;
+
+  if (!oldPassword) {
+    return res
+      .status(400)
+      .json({ code: 400, message: "Chưa nhập mật khẩu cũ" });
+  }
+
+  if (!newPassword) {
+    return res
+      .status(400)
+      .json({ code: 400, message: "Chưa nhập mật khẩu mới" });
+  }
+
+  if (oldPassword === newPassword) {
+    return res.status(400).json({
+      code: 400,
+      message: "Mật khẩu mới không được giống mật khẩu cũ",
+    });
+  }
+
+  const error = isStrongPassword(newPassword);
+  if (error) {
+    return res.status(400).json({ code: 400, message: error });
+  }
+
+  next();
+};
+
+// kiểm tra chỉnh sửa công ty
+const checkEditCompany = (req, res, next) => {
+  const {
+    companyName,
+    phone,
+    email,
+    address,
+    description,
+    quantityPeople,
+    detail,
+    workingTime,
+    website,
+  } = req.body;
+
+  if (email !== req.company.email) {
+    return res
+      .status(400)
+      .json({ code: 400, message: "Không được thay đổi email" });
+  }
+
+  if (!companyName || !phone || !address || !description) {
+    return res
+      .status(400)
+      .json({ code: 400, message: "Chưa nhập đủ thông tin yêu cầu" });
+  }
+
+  const validations = [
+    checkLength("Tên công ty", companyName, 2, 100),
+    checkLength("Số điện thoại", phone, 9, 11),
+    checkLength("Địa chỉ", address, 5, 200),
+    checkLength("Mô tả", description, 10, 1000),
+  ];
+  if (quantityPeople) {
+    validations.push(checkLength("Số người", quantityPeople, 1, 100));
+  }
+  if (detail) {
+    validations.push(checkLength("Chi tiết", detail, 10, 1000));
+  }
+  if (workingTime) {
+    validations.push(checkLength("Thời gian làm việc", workingTime, 1, 200));
+  }
+  if (website) {
+    validations.push(checkLength("Website", website, 1, 200));
+  }
+
+  const error = validations.find((msg) => msg !== null);
+  if (error) {
+    return res.status(400).json({ code: 400, message: error });
+  }
+
+  next();
+};
+
+// Export tất cả middleware
+module.exports = {
+  checkLogin,
+  checkRegister,
+  checkLength,
+  checkEmailResetPassword,
+  checkResetPassword,
+  checkChangePassword,
+  checkEditCompany,
+  isStrongPassword, // Export this function for use in user.validator.js
+};
+```
+
+### api\v1\validators\cv.validator.js
+```js
+const { checkLength } = require("./company.validator");
+
+module.exports.checkCreateCV = (req, res, next) => {
+  try {
+    const { name, phone, email, city, description, linkProject, selectedCvId, linkCV, idUser } = req.body;
+
+    // Kiểm tra thiếu trường cơ bản
+    if (!name || !phone || !email || !city || !description || !linkProject) {
+      return res
+        .status(400)
+        .json({ code: 400, message: "Chưa nhập đủ thông tin cần thiết" });
+    }
+
+    // Kiểm tra CV logic
+    if (idUser) {
+      // User đã đăng ký - phải chọn CV từ dropdown
+      if (!selectedCvId) {
+        return res.status(400).json({ 
+          code: 400, 
+          message: "Vui lòng chọn CV từ danh sách của bạn" 
+        });
+      }
+      if (linkCV) {
+        return res.status(400).json({ 
+          code: 400, 
+          message: "User đã đăng ký không thể upload CV trực tiếp" 
+        });
+      }
+    } else {
+      // Khách vãng lai - phải upload CV mới
+      if (!linkCV) {
+        return res.status(400).json({ 
+          code: 400, 
+          message: "Vui lòng upload CV" 
+        });
+      }
+      if (selectedCvId) {
+        return res.status(400).json({ 
+          code: 400, 
+          message: "Khách vãng lai không thể chọn CV từ danh sách" 
+        });
+      }
+    }
+
+    // Kiểm tra độ dài từng trường
+    const validations = [
+      checkLength("Họ và tên", name, 2, 100),
+      checkLength("Số điện thoại", phone, 9, 11),
+      checkLength("Email", email, 5, 100),
+      checkLength("Mô tả bản thân", description, 10, 2000),
+      checkLength("Link dự án", linkProject, 5, 500),
+    ];
+
+    if (linkCV) {
+      validations.push(checkLength("Link CV", linkCV, 5, 500));
+    }
+
+    const error = validations.find((msg) => msg !== null);
+    if (error) {
+      return res.status(400).json({ code: 400, message: error });
+    }
+
+    // Regex kiểm tra định dạng
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ code: 400, message: "Email không hợp lệ" });
+    }
+
+    const phoneRegex = /^(0|\+84)[0-9]{9}$/;
+    if (!phoneRegex.test(phone)) {
+      return res
+        .status(400)
+        .json({ code: 400, message: "Số điện thoại không hợp lệ" });
+    }
+
+    next();
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+```
+
+### api\v1\validators\job.validator.js
+```js
+const { checkLength } = require("./company.validator");
+
+const checkJob = (req, res, next) => {
+  const { name, tags, salary, city, description } = req.body;
+
+  // Kiểm tra thiếu trường
+  if (!name || !tags || !salary || !city || !description) {
+    return res.status(400).json({
+      code: 400,
+      message: "Chưa nhập đủ thông tin",
+    });
+  }
+
+  // Kiểm tra độ dài nội dung
+  const validations = [
+    checkLength("Tên công việc", name, 3, 100),
+    checkLength("Mức lương", salary, 2, 100),
+    checkLength("Mô tả công việc", description, 10, 2000),
+  ];
+
+  const error = validations.find((msg) => msg !== null);
+  if (error) {
+    return res.status(400).json({ code: 400, message: error });
+  }
+
+  next();
+};
+
+module.exports = { checkJob };
+
+```
+
+### api\v1\validators\user.validator.js
+```js
+const { isStrongPassword, checkLength } = require("./company.validator");
+
+// Kiểm tra đăng nhập user
+const checkLogin = (req, res, next) => {
+  const { email, password } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ code: 400, message: "Chưa nhập email" });
+  }
+
+  if (!password) {
+    return res.status(400).json({ code: 400, message: "Chưa nhập mật khẩu" });
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ code: 400, message: "Email không hợp lệ" });
+  }
+
+  const emailLengthError = checkLength("Email", email, 5, 100);
+  if (emailLengthError) {
+    return res.status(400).json({ code: 400, message: emailLengthError });
+  }
+
+  if (password.length < 8 || password.length > 20) {
+    return res
+      .status(400)
+      .json({ code: 400, message: "Độ dài mật khẩu không hợp lệ" });
+  }
+
+  next();
+};
+
+// Kiểm tra đăng ký user
+const checkRegister = (req, res, next) => {
+  const { email, password, phone, fullName } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ code: 400, message: "Vui lòng nhập email" });
+  }
+  if (!phone) {
+    return res
+      .status(400)
+      .json({ code: 400, message: "Vui lòng nhập số điện thoại" });
+  }
+  if (!fullName) {
+    return res
+      .status(400)
+      .json({ code: 400, message: "Vui lòng nhập họ và tên" });
+  }
+
+  const emailLengthError = checkLength("Email", email, 5, 100);
+  const phoneLengthError = checkLength("Số điện thoại", phone, 9, 11);
+  const nameLengthError = checkLength("Họ và tên", fullName, 2, 100);
+
+  const lengthError = emailLengthError || phoneLengthError || nameLengthError;
+  if (lengthError) {
+    return res.status(400).json({ code: 400, message: lengthError });
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ code: 400, message: "Email không hợp lệ" });
+  }
+
+  const phoneRegex = /^(0|\+84)[0-9]{9}$/;
+  if (!phoneRegex.test(phone)) {
+    return res
+      .status(400)
+      .json({ code: 400, message: "Số điện thoại không hợp lệ" });
+  }
+
+  const error = isStrongPassword(password);
+  if (error) {
+    return res.status(400).json({ code: 400, message: error });
+  }
+
+  next();
+};
+
+// Kiểm tra email reset password
+const checkEmailResetPassword = (req, res, next) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ code: 400, message: "Chưa nhập email" });
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ code: 400, message: "Email không hợp lệ" });
+  }
+
+  next();
+};
+
+// Kiểm tra reset mật khẩu
+const checkResetPassword = (req, res, next) => {
+  try {
+    const newPassword = req.body.newPassword;
+
+    if (!newPassword) {
+      return res
+        .status(400)
+        .json({ code: 400, message: "Chưa nhập mật khẩu mới" });
+    }
+
+    const error = isStrongPassword(newPassword);
+    if (error) {
+      return res.status(400).json({ code: 400, message: error });
+    }
+
+    next();
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+// Kiểm tra đổi mật khẩu
+const checkChangePassword = (req, res, next) => {
+  const { oldPassword, newPassword } = req.body;
+
+  if (!oldPassword) {
+    return res
+      .status(400)
+      .json({ code: 400, message: "Chưa nhập mật khẩu cũ" });
+  }
+
+  if (!newPassword) {
+    return res
+      .status(400)
+      .json({ code: 400, message: "Chưa nhập mật khẩu mới" });
+  }
+
+  if (oldPassword === newPassword) {
+    return res.status(400).json({
+      code: 400,
+      message: "Mật khẩu mới không được giống mật khẩu cũ",
+    });
+  }
+
+  const error = isStrongPassword(newPassword);
+  if (error) {
+    return res.status(400).json({ code: 400, message: error });
+  }
+
+  next();
+};
+
+// Kiểm tra chỉnh sửa user - UPDATED to include linkProject validation
+const checkEditUser = (req, res, next) => {
+  const { fullName, phone, email, city, address, description, linkProject } = req.body;
+
+  if (email !== req.user.email) {
+    return res
+      .status(400)
+      .json({ code: 400, message: "Không được thay đổi email" });
+  }
+
+  if (!fullName || !phone) {
+    return res
+      .status(400)
+      .json({ code: 400, message: "Chưa nhập đủ thông tin yêu cầu" });
+  }
+
+  const validations = [
+    checkLength("Họ và tên", fullName, 2, 100),
+    checkLength("Số điện thoại", phone, 9, 11),
+  ];
+
+  if (city) {
+    validations.push(checkLength("Thành phố", city, 1, 100));
+  }
+  if (address) {
+    validations.push(checkLength("Địa chỉ", address, 5, 200));
+  }
+  if (description) {
+    validations.push(checkLength("Mô tả", description, 10, 1000));
+  }
+  // NEW: Add linkProject validation
+  if (linkProject) {
+    validations.push(checkLength("Link dự án", linkProject, 5, 500));
+  }
+
+  const error = validations.find((msg) => msg !== null);
+  if (error) {
+    return res.status(400).json({ code: 400, message: error });
+  }
+
+  next();
+};
+
+// Kiểm tra tạo/sửa CV cá nhân
+const checkMyCv = (req, res, next) => {
+  const { cvName, cvUrl } = req.body;
+
+  if (!cvName) {
+    return res.status(400).json({ code: 400, message: "Chưa nhập tên CV" });
+  }
+
+  if (!cvUrl) {
+    return res.status(400).json({ code: 400, message: "Chưa có file CV" });
+  }
+
+  const cvNameError = checkLength("Tên CV", cvName, 2, 100);
+  const cvUrlError = checkLength("URL CV", cvUrl, 5, 500);
+
+  const error = cvNameError || cvUrlError;
+  if (error) {
+    return res.status(400).json({ code: 400, message: error });
+  }
+
+  next();
+};
+
+module.exports = {
+  checkLogin,
+  checkRegister,
+  checkEmailResetPassword,
+  checkResetPassword,
+  checkChangePassword,
+  checkEditUser,
+  checkMyCv,
+};
+```
+
+### config\database.js
+```js
+const mongoose = require("mongoose");
+
+module.exports.connect = async () => {
+    try {
+        await mongoose.connect(process.env.MONGO_URL);
+        console.log("Connected to MongoDB");
+    } catch (error) {
+        console.error("Error connecting to MongoDB:", error);
+    }
+}
+
+```
+
+### helpers\generate.js
+```js
+module.exports.generateToken =() => {
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const length = 20;
+    let token = '';
+  
+    for (let i = 0; i < length; i++) {
+      const randomIndex = Math.floor(Math.random() * characters.length);
+      token += characters.charAt(randomIndex);
+    }
+  
+    return token;
+  }
+module.exports.generateRandomNumber =() => {
+    const characters = '0123456789';
+    const length = 6;
+    let result = '';
+  
+    for (let i = 0; i < length; i++) {
+      const randomIndex = Math.floor(Math.random() * characters.length);
+      result += characters.charAt(randomIndex);
+    }
+  
+    return result;
+  }
+```
+
+### helpers\sendMail.js
+```js
+const nodemailer = require("nodemailer");
+
+module.exports.sendMail = (email, subject, otpCode) => {
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASSWORD,
+    },
+  });
+
+  const mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: email,
+    subject: subject,
+    html: `
+    <div style="max-width: 600px; margin: auto; border: 1px solid #eee; padding: 30px; font-family: Arial, sans-serif; background-color: #f9f9f9;">
+      <div style="text-align: center; padding-bottom: 20px;">
+        <h1 style="color: #2e5aac; margin-bottom: 5px;">IT JOB</h1>
+        <p style="margin: 0; color: #555;">Nền tảng kết nối việc làm ngành CNTT</p>
+      </div>
+      <div style="background-color: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+        <h2 style="color: #333;">Mã xác thực OTP của bạn</h2>
+        <p style="font-size: 16px; color: #555;">Xin chào,</p>
+        <p style="font-size: 16px; color: #555;">Bạn đang thực hiện hành động cần xác minh qua OTP. Vui lòng sử dụng mã dưới đây:</p>
+        <div style="text-align: center; margin: 20px 0;">
+          <span style="display: inline-block; padding: 12px 24px; font-size: 24px; font-weight: bold; background-color: #2e5aac; color: #fff; border-radius: 6px;">
+            ${otpCode}
+          </span>
+        </div>
+        <p style="color: #777;">Mã OTP này sẽ hết hạn sau <strong>5 phút</strong>. Nếu bạn không yêu cầu mã này, vui lòng bỏ qua email.</p>
+        <p style="margin-top: 30px; color: #999;">Trân trọng,<br/>Đội ngũ <strong>IT JOB</strong></p>
+      </div>
+      <div style="text-align: center; font-size: 12px; color: #aaa; margin-top: 30px;">
+        © ${new Date().getFullYear()} IT JOB. All rights reserved.
+      </div>
+    </div>
+  `,
+  };
+
+  transporter.sendMail(mailOptions, function (error, info) {
+    if (error) {
+      console.log(error);
+    } else {
+      console.log("Email sent: " + info.response);
+      // do something useful
+    }
+  });
+};
+
+```

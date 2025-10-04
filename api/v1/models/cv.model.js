@@ -7,21 +7,25 @@ const cvSchema = new Schema({
     email: String,
     city: String,
     description: String,
-    statusRead: {
-        type: Boolean,
-        default: false
+    status: {
+        type: String,
+        enum: ['unread', 'read', 'replied'], // unread: chưa đọc, read: đã đọc, replied: đã phản hồi
+        default: 'unread'
     },
     linkProject: String,
+    linkCV: String, // URL của CV được gửi
+    selectedCvId: String, // ID của CV từ user_cvs collection (nếu user đã đăng ký)
     idCompany: String,
     idJob: String,
+    idUser: String, // ID của user (null nếu là khách vãng lai)
     deleted: {
         type: Boolean,
         default: false
     },
     deletedAt: Date
 }, {
-    // Dùng để thêm thời gian tạo và cập nhật sản phẩm tự động
     timestamps: true
 });
+
 const Cv = mongoose.model('Cv', cvSchema, 'cv');
-module.exports =  Cv;
+module.exports = Cv;

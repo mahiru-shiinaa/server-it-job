@@ -1,61 +1,6 @@
-// Hàm kiểm tra độ mạnh của mật khẩu
-const isStrongPassword = (password) => {
-  const specialCharRegex = /[!@#$%^&*(),.?":{}|<>]/;
-  const upperCaseRegex = /[A-Z]/;
-  const lowerCaseRegex = /[a-z]/;
-  const numberRegex = /[0-9]/;
+const { isStrongPassword, checkLength } = require("./company.validator");
 
-  if (password.length < 8) {
-    return "Mật khẩu phải có ít nhất 8 ký tự";
-  }
-
-  if (password.length > 20) {
-    return "Mật khẩu không được vượt quá 20 ký tự";
-  }
-
-  if (/\s/.test(password)) {
-    return "Mật khẩu không được chứa ký tự trống (space)";
-  }
-
-  if (!upperCaseRegex.test(password)) {
-    return "Mật khẩu phải chứa ít nhất một chữ cái viết hoa";
-  }
-
-  if (!lowerCaseRegex.test(password)) {
-    return "Mật khẩu phải chứa ít nhất một chữ cái viết thường";
-  }
-
-  if (!numberRegex.test(password)) {
-    return "Mật khẩu phải chứa ít nhất một số";
-  }
-
-  if (!specialCharRegex.test(password[password.length - 1])) {
-    return "Ký tự cuối của mật khẩu phải là ký tự đặc biệt";
-  }
-
-  if (password[0] !== password[0].toUpperCase()) {
-    return "Ký tự đầu tiên của mật khẩu phải viết hoa";
-  }
-
-  return null; // hợp lệ
-};
-
-// Hàm kiểm tra độ dài chuỗi
-const checkLength = (field, value, min, max) => {
-  if (!value) return null;
-
-  if (value.length < min) {
-    return `${field} phải có ít nhất ${min} ký tự`;
-  }
-
-  if (value.length > max) {
-    return `${field} không được vượt quá ${max} ký tự`;
-  }
-
-  return null;
-};
-
-// kiểm tra đăng nhập
+// Kiểm tra đăng nhập user
 const checkLogin = (req, res, next) => {
   const { email, password } = req.body;
 
@@ -86,9 +31,9 @@ const checkLogin = (req, res, next) => {
   next();
 };
 
-// kiểm tra đăng ký
+// Kiểm tra đăng ký user
 const checkRegister = (req, res, next) => {
-  const { email, password, phone, companyName } = req.body;
+  const { email, password, phone, fullName } = req.body;
 
   if (!email) {
     return res.status(400).json({ code: 400, message: "Vui lòng nhập email" });
@@ -98,15 +43,15 @@ const checkRegister = (req, res, next) => {
       .status(400)
       .json({ code: 400, message: "Vui lòng nhập số điện thoại" });
   }
-  if (!companyName) {
+  if (!fullName) {
     return res
       .status(400)
-      .json({ code: 400, message: "Vui lòng nhập tên công ty" });
+      .json({ code: 400, message: "Vui lòng nhập họ và tên" });
   }
 
   const emailLengthError = checkLength("Email", email, 5, 100);
   const phoneLengthError = checkLength("Số điện thoại", phone, 9, 11);
-  const nameLengthError = checkLength("Tên công ty", companyName, 2, 100);
+  const nameLengthError = checkLength("Họ và tên", fullName, 2, 100);
 
   const lengthError = emailLengthError || phoneLengthError || nameLengthError;
   if (lengthError) {
@@ -133,7 +78,7 @@ const checkRegister = (req, res, next) => {
   next();
 };
 
-// kiểm tra email quên mật khẩu
+// Kiểm tra email reset password
 const checkEmailResetPassword = (req, res, next) => {
   const { email } = req.body;
 
@@ -149,7 +94,7 @@ const checkEmailResetPassword = (req, res, next) => {
   next();
 };
 
-// kiểm tra reset mật khẩu
+// Kiểm tra reset mật khẩu
 const checkResetPassword = (req, res, next) => {
   try {
     const newPassword = req.body.newPassword;
@@ -172,7 +117,7 @@ const checkResetPassword = (req, res, next) => {
   }
 };
 
-// kiểm tra đổi mật khẩu
+// Kiểm tra đổi mật khẩu
 const checkChangePassword = (req, res, next) => {
   const { oldPassword, newPassword } = req.body;
 
@@ -203,49 +148,39 @@ const checkChangePassword = (req, res, next) => {
   next();
 };
 
-// kiểm tra chỉnh sửa công ty
-const checkEditCompany = (req, res, next) => {
-  const {
-    companyName,
-    phone,
-    email,
-    address,
-    description,
-    quantityPeople,
-    detail,
-    workingTime,
-    website,
-  } = req.body;
+// Kiểm tra chỉnh sửa user - UPDATED to include linkProject validation
+const checkEditUser = (req, res, next) => {
+  const { fullName, phone, email, city, address, description, linkProject } = req.body;
 
-  if (email !== req.company.email) {
+  if (email !== req.user.email) {
     return res
       .status(400)
       .json({ code: 400, message: "Không được thay đổi email" });
   }
 
-  if (!companyName || !phone || !address || !description) {
+  if (!fullName || !phone) {
     return res
       .status(400)
       .json({ code: 400, message: "Chưa nhập đủ thông tin yêu cầu" });
   }
 
   const validations = [
-    checkLength("Tên công ty", companyName, 2, 100),
+    checkLength("Họ và tên", fullName, 2, 100),
     checkLength("Số điện thoại", phone, 9, 11),
-    checkLength("Địa chỉ", address, 5, 200),
-    checkLength("Mô tả", description, 10, 1000),
   ];
-  if (quantityPeople) {
-    validations.push(checkLength("Số người", quantityPeople, 1, 100));
+
+  if (city) {
+    validations.push(checkLength("Thành phố", city, 1, 100));
   }
-  if (detail) {
-    validations.push(checkLength("Chi tiết", detail, 10, 1000));
+  if (address) {
+    validations.push(checkLength("Địa chỉ", address, 5, 200));
   }
-  if (workingTime) {
-    validations.push(checkLength("Thời gian làm việc", workingTime, 1, 200));
+  if (description) {
+    validations.push(checkLength("Mô tả", description, 10, 1000));
   }
-  if (website) {
-    validations.push(checkLength("Website", website, 1, 200));
+  // NEW: Add linkProject validation
+  if (linkProject) {
+    validations.push(checkLength("Link dự án", linkProject, 5, 500));
   }
 
   const error = validations.find((msg) => msg !== null);
@@ -256,14 +191,35 @@ const checkEditCompany = (req, res, next) => {
   next();
 };
 
-// Export tất cả middleware
+// Kiểm tra tạo/sửa CV cá nhân
+const checkMyCv = (req, res, next) => {
+  const { cvName, cvUrl } = req.body;
+
+  if (!cvName) {
+    return res.status(400).json({ code: 400, message: "Chưa nhập tên CV" });
+  }
+
+  if (!cvUrl) {
+    return res.status(400).json({ code: 400, message: "Chưa có file CV" });
+  }
+
+  const cvNameError = checkLength("Tên CV", cvName, 2, 100);
+  const cvUrlError = checkLength("URL CV", cvUrl, 5, 500);
+
+  const error = cvNameError || cvUrlError;
+  if (error) {
+    return res.status(400).json({ code: 400, message: error });
+  }
+
+  next();
+};
+
 module.exports = {
   checkLogin,
   checkRegister,
-  checkLength,
   checkEmailResetPassword,
   checkResetPassword,
   checkChangePassword,
-  checkEditCompany,
-  isStrongPassword, // Export this function for use in user.validator.js
+  checkEditUser,
+  checkMyCv,
 };
