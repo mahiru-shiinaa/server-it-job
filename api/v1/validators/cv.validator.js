@@ -20,6 +20,7 @@ module.exports.checkCreateCV = (req, res, next) => {
           message: "Vui lòng chọn CV từ danh sách của bạn" 
         });
       }
+      // ✅ Không validate linkCV vì sẽ tự động copy từ selectedCV
       if (linkCV) {
         return res.status(400).json({ 
           code: 400, 
@@ -51,7 +52,8 @@ module.exports.checkCreateCV = (req, res, next) => {
       checkLength("Link dự án", linkProject, 5, 500),
     ];
 
-    if (linkCV) {
+    // ✅ Chỉ validate linkCV nếu là khách vãng lai
+    if (!idUser && linkCV) {
       validations.push(checkLength("Link CV", linkCV, 5, 500));
     }
 

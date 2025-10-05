@@ -9,15 +9,20 @@ const cvSchema = new Schema({
     description: String,
     status: {
         type: String,
-        enum: ['unread', 'read', 'replied'], // unread: chưa đọc, read: đã đọc, replied: đã phản hồi
+        enum: ['unread', 'read', 'replied'],
         default: 'unread'
     },
     linkProject: String,
-    linkCV: String, // URL của CV được gửi
-    selectedCvId: String, // ID của CV từ user_cvs collection (nếu user đã đăng ký)
-    idCompany: String,
-    idJob: String,
-    idUser: String, // ID của user (null nếu là khách vãng lai)
+    linkCV: String, // URL của CV - bắt buộc cho cả user và guest
+    idCompany: {
+        type: Schema.Types.ObjectId,
+        ref: "Company"
+    },
+    idJob: {
+        type: Schema.Types.ObjectId,
+        ref: "Job"
+    },
+    idUser: String, // null nếu là khách vãng lai
     deleted: {
         type: Boolean,
         default: false

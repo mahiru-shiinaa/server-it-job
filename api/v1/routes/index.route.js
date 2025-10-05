@@ -4,6 +4,7 @@ const companyRoutes = require("./company.route");
 const tagRoutes = require("./tag.route");
 const cvRoutes = require("./cv.route");
 const userRoutes = require("./user.route");
+const uploadRoutes = require("./upload.route");
 
 module.exports = (app) => {
     const version = "/api/v1";
@@ -14,4 +15,5 @@ module.exports = (app) => {
     app.use(version + "/tags", tagRoutes);
     app.use(version + "/cv", cvRoutes);
     app.use(version + "/users", userRoutes);
+    app.use(version + "/upload", uploadRoutes);
 }

@@ -41,10 +41,12 @@ router.post("/password/reset", userValidator.checkResetPassword, userController.
 router.get("/my-cvs", userAuthMiddleware.requireAuth, userController.getMyCvs);
 router.post("/my-cvs/create", userAuthMiddleware.requireAuth, userValidator.checkMyCv, userController.createMyCv);
 router.patch("/my-cvs/edit/:id", userAuthMiddleware.requireAuth, userValidator.checkMyCv, userController.editMyCv);
+router.get("/my-cvs/detail/:id", userAuthMiddleware.requireAuth, userController.getMyCvDetail);
 router.delete("/my-cvs/delete/:id", userAuthMiddleware.requireAuth, userController.deleteMyCv);
 
 // Sent CVs management routes
 router.get("/sent-cvs", userAuthMiddleware.requireAuth, userController.getSentCvs);
+router.get("/sent-cvs/detail/:id", userAuthMiddleware.requireAuth, userController.getSentCvDetail);
 router.delete("/sent-cvs/withdraw/:id", userAuthMiddleware.requireAuth, userController.withdrawCv);
 
 module.exports = router;

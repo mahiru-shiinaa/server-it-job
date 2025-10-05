@@ -150,18 +150,14 @@ const checkChangePassword = (req, res, next) => {
 
 // Kiểm tra chỉnh sửa user - UPDATED to include linkProject validation
 const checkEditUser = (req, res, next) => {
-  const { fullName, phone, email, city, address, description, linkProject } = req.body;
+  const { fullName, phone, email, city, address, description, linkProject, avatar } = req.body;
 
   if (email !== req.user.email) {
-    return res
-      .status(400)
-      .json({ code: 400, message: "Không được thay đổi email" });
+    return res.status(400).json({ code: 400, message: "Không được thay đổi email" });
   }
 
   if (!fullName || !phone) {
-    return res
-      .status(400)
-      .json({ code: 400, message: "Chưa nhập đủ thông tin yêu cầu" });
+    return res.status(400).json({ code: 400, message: "Chưa nhập đủ thông tin yêu cầu" });
   }
 
   const validations = [
@@ -172,15 +168,29 @@ const checkEditUser = (req, res, next) => {
   if (city) {
     validations.push(checkLength("Thành phố", city, 1, 100));
   }
+
   if (address) {
     validations.push(checkLength("Địa chỉ", address, 5, 200));
   }
+
   if (description) {
     validations.push(checkLength("Mô tả", description, 10, 1000));
   }
-  // NEW: Add linkProject validation
+
   if (linkProject) {
     validations.push(checkLength("Link dự án", linkProject, 5, 500));
+  }
+
+  // ✅ NEW: Avatar validation (URL format + length)
+  if (avatar) {
+    const urlPattern = /^(https?:\/\/)[^\s$.?#].[^\s]*$/i; // kiểm tra định dạng URL
+    if (!urlPattern.test(avatar)) {
+      return res.status(400).json({ code: 400, message: "Avatar phải là đường dẫn URL hợp lệ" });
+    }
+    const lengthError = checkLength("Avatar", avatar, 5, 500);
+    if (lengthError) {
+      return res.status(400).json({ code: 400, message: lengthError });
+    }
   }
 
   const error = validations.find((msg) => msg !== null);
@@ -190,6 +200,7 @@ const checkEditUser = (req, res, next) => {
 
   next();
 };
+
 
 // Kiểm tra tạo/sửa CV cá nhân
 const checkMyCv = (req, res, next) => {

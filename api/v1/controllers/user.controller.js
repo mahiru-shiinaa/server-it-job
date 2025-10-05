@@ -417,26 +417,57 @@ module.exports.getMyCvs = async (req, res) => {
       deleted: false 
     }).sort({ createdAt: -1 });
     
-    res.status(200).json(cvs);
+    res.status(200).json({
+      code: 200,
+      message: "Lấy danh sách CV thành công",
+      cvs: cvs
+    });
   } catch (error) {
-    res.status(500).json("Lỗi server");
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
   }
 };
 
 //[POST] /api/v1/users/my-cvs/create
 module.exports.createMyCv = async (req, res) => {
   try {
+    const { cvName, cvUrl } = req.body;
+    
+    // Kiểm tra trùng tên CV
+    const existingCv = await UserCv.findOne({
+      idUser: req.user._id,
+      cvName: cvName,
+      deleted: false
+    });
+    
+    if (existingCv) {
+      return res.status(400).json({ 
+        code: 400, 
+        message: "Tên CV đã tồn tại, vui lòng chọn tên khác" 
+      });
+    }
+    
     req.body.idUser = req.user._id;
     const cv = await UserCv.create(req.body);
-    res.status(200).json({ code: 200, message: "Tạo CV thành công", cv: cv });
+    
+    res.status(200).json({ 
+      code: 200, 
+      message: "Tạo CV thành công", 
+      cv: cv 
+    });
   } catch (error) {
-    res.status(500).json("Lỗi server");
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
   }
 };
+
 
 //[PATCH] /api/v1/users/my-cvs/edit/:id
 module.exports.editMyCv = async (req, res) => {
   try {
+    const { cvName } = req.body;
+    
+    // Kiểm tra CV có tồn tại và thuộc về user không
     const cv = await UserCv.findOne({
       _id: req.params.id,
       idUser: req.user._id,
@@ -444,7 +475,27 @@ module.exports.editMyCv = async (req, res) => {
     });
     
     if (!cv) {
-      return res.status(404).json({ message: "Không tìm thấy CV" });
+      return res.status(404).json({ 
+        code: 404, 
+        message: "Không tìm thấy CV" 
+      });
+    }
+    
+    // Nếu đổi tên, kiểm tra trùng với CV khác
+    if (cvName && cvName !== cv.cvName) {
+      const existingCv = await UserCv.findOne({
+        idUser: req.user._id,
+        cvName: cvName,
+        deleted: false,
+        _id: { $ne: req.params.id } // Loại trừ CV đang sửa
+      });
+      
+      if (existingCv) {
+        return res.status(400).json({ 
+          code: 400, 
+          message: "Tên CV đã tồn tại, vui lòng chọn tên khác" 
+        });
+      }
     }
     
     const updatedCv = await UserCv.findByIdAndUpdate(
@@ -459,7 +510,35 @@ module.exports.editMyCv = async (req, res) => {
       cv: updatedCv 
     });
   } catch (error) {
-    res.status(500).json("Lỗi server");
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[GET] /api/v1/users/my-cvs/detail/:id
+module.exports.getMyCvDetail = async (req, res) => {
+  try {
+    const cv = await UserCv.findOne({
+      _id: req.params.id,
+      idUser: req.user._id,
+      deleted: false,
+    });
+    
+    if (!cv) {
+      return res.status(404).json({ 
+        code: 404, 
+        message: "Không tìm thấy CV" 
+      });
+    }
+    
+    res.status(200).json({
+      code: 200,
+      message: "Lấy thông tin CV thành công",
+      cv: cv
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
   }
 };
 
@@ -473,7 +552,23 @@ module.exports.deleteMyCv = async (req, res) => {
     });
     
     if (!cv) {
-      return res.status(404).json({ message: "Không tìm thấy CV" });
+      return res.status(404).json({ 
+        code: 404, 
+        message: "Không tìm thấy CV" 
+      });
+    }
+    
+    // Kiểm tra xem CV có đang được sử dụng trong bất kỳ đơn ứng tuyển nào không
+    const cvInUse = await Cv.findOne({
+      selectedCvId: req.params.id,
+      deleted: false
+    });
+    
+    if (cvInUse) {
+      return res.status(400).json({
+        code: 400,
+        message: "CV đang được sử dụng trong đơn ứng tuyển, không thể xóa"
+      });
     }
     
     await UserCv.findByIdAndUpdate(req.params.id, {
@@ -481,9 +576,13 @@ module.exports.deleteMyCv = async (req, res) => {
       deletedAt: new Date(),
     });
     
-    res.status(200).json({ code: 200, message: "Xóa CV thành công" });
+    res.status(200).json({ 
+      code: 200, 
+      message: "Xóa CV thành công" 
+    });
   } catch (error) {
-    res.status(500).json("Lỗi server");
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
   }
 };
 
@@ -493,11 +592,41 @@ module.exports.getSentCvs = async (req, res) => {
     const cvs = await Cv.find({ 
       idUser: req.user._id, 
       deleted: false 
-    }).sort({ createdAt: -1 });
+    }).sort({ createdAt: -1 }).populate({
+      path: 'idJob',
+      select: 'name'
+    }
+    ).populate({
+      path: 'idCompany',
+      select: 'companyName'
+    });
     
     res.status(200).json(cvs);
   } catch (error) {
     res.status(500).json("Lỗi server");
+  }
+};
+
+//[GET] /api/v1/users/sent-cvs/detail/:id
+module.exports.getSentCvDetail = async (req, res) => {
+  try {
+    const cv = await Cv.findOne({
+      _id: req.params.id,
+      idUser: req.user._id,
+      deleted: false,
+    });
+    
+    if (!cv) {
+      return res.status(404).json({ 
+        code: 404, 
+        message: "Không tìm thấy CV" 
+      });
+    }
+    
+    res.status(200).json(cv);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
   }
 };
 

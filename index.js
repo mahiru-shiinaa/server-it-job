@@ -30,5 +30,5 @@ routesApiV1(app);
 //routesApiV2(app);
 
 app.listen(port, () => {
-  console.log(`App listening on port ${port}`);
+  console.log(`🎯 App listening on port ${port}`);
 });

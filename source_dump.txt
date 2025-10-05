@@ -15,6 +15,7 @@ server/
 │       │   ├── cv.controller.js
 │       │   ├── job.controller.js
 │       │   ├── tag.controller.js
+│       │   ├── upload.controller.js
 │       │   └── user.controller.js
 │       ├── middlewares/
 │       │   ├── auth.middleware.js
@@ -37,6 +38,7 @@ server/
 │       │   ├── index.route.js
 │       │   ├── job.route.js
 │       │   ├── tag.route.js
+│       │   ├── upload.route.js
 │       │   └── user.route.js
 │       └── validators/
 │           ├── company.validator.js
@@ -47,8 +49,10 @@ server/
 │   └── database.js
 ├── helpers/
 │   ├── generate.js
-│   └── sendMail.js
+│   ├── sendMail.js
+│   └── uploadCloudinary.js
 ├── middlewares/
+│   └── uploadCloud.middlewares.js
 ├── node_modules/
 ├── .env
 ├── .gitignore
@@ -94,7 +98,7 @@ routesApiV1(app);
 //routesApiV2(app);
 
 app.listen(port, () => {
-  console.log(`App listening on port ${port}`);
+  console.log(`🎯 App listening on port ${port}`);
 });
 
 ```
@@ -565,7 +569,7 @@ const sendMailHelper = require("../../../helpers/sendMail");
 module.exports.create = async (req, res) => {
   try {
     const { selectedCvId, linkCV } = req.body;
-    
+
     // Kiểm tra đã gửi CV cho job này chưa
     const existingCv = await Cv.findOne({
       email: req.body.email,
@@ -573,9 +577,12 @@ module.exports.create = async (req, res) => {
       idJob: req.body.idJob,
       deleted: false,
     });
-    
+
     if (existingCv) {
-      return res.status(400).json({ code: 400, message: "Bạn đã gửi CV cho Job này" });
+      return res.status(400).json({
+        code: 400,
+        message: "Bạn đã gửi CV cho Job này",
+      });
     }
 
     // Xử lý CV dựa trên loại user
@@ -585,37 +592,35 @@ module.exports.create = async (req, res) => {
       const selectedCV = await UserCv.findOne({
         _id: selectedCvId,
         idUser: req.body.idUser,
-        deleted: false
+        deleted: false,
       });
-      
+
       if (!selectedCV) {
-        return res.status(400).json({ 
-          code: 400, 
-          message: "CV không tồn tại hoặc không thuộc về bạn" 
+        return res.status(400).json({
+          code: 400,
+          message: "CV không tồn tại hoặc không thuộc về bạn",
         });
       }
-      
+
+      // ✅ Chỉ copy URL, không lưu selectedCvId
       req.body.linkCV = selectedCV.cvUrl;
-      req.body.selectedCvId = selectedCvId;
     } else if (linkCV) {
       // Khách vãng lai - upload CV mới
       req.body.linkCV = linkCV;
       req.body.idUser = null;
-      req.body.selectedCvId = null;
     } else {
-      return res.status(400).json({ 
-        code: 400, 
-        message: "Vui lòng chọn CV từ danh sách hoặc upload CV mới" 
+      return res.status(400).json({
+        code: 400,
+        message: "Vui lòng chọn CV từ danh sách hoặc upload CV mới",
       });
     }
 
     const newCv = await Cv.create(req.body);
-    res.status(200).json({ 
-      code: 200, 
-      message: "Gửi CV thành công", 
-      cv: newCv 
+    res.status(200).json({
+      code: 200,
+      message: "Gửi CV thành công",
+      cv: newCv,
     });
-    
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Lỗi server" });
@@ -672,7 +677,7 @@ module.exports.changeStatus = async (req, res) => {
   try {
     const cv = await Cv.findByIdAndUpdate(
       { _id: req.params.id, idCompany: req.company._id, deleted: false },
-      { status: 'read' }, // Cập nhật từ statusRead thành status với giá trị 'read'
+      { status: "read" }, // Cập nhật từ statusRead thành status với giá trị 'read'
       { new: true }
     );
     res.status(200).json({ code: 200, message: "Cập nhập đã đọc", cv: cv });
@@ -685,11 +690,11 @@ module.exports.changeStatus = async (req, res) => {
 module.exports.reply = async (req, res) => {
   try {
     const { replyMessage } = req.body;
-    
+
     if (!replyMessage) {
-      return res.status(400).json({ 
-        code: 400, 
-        message: "Vui lòng nhập nội dung phản hồi" 
+      return res.status(400).json({
+        code: 400,
+        message: "Vui lòng nhập nội dung phản hồi",
       });
     }
 
@@ -700,16 +705,11 @@ module.exports.reply = async (req, res) => {
     });
 
     if (!cv) {
-      return res.status(404).json({ 
-        code: 404, 
-        message: "Không tìm thấy CV" 
+      return res.status(404).json({
+        code: 404,
+        message: "Không tìm thấy CV",
       });
     }
-
-    // Cập nhật trạng thái CV thành đã phản hồi
-    await Cv.findByIdAndUpdate(req.params.id, { 
-      status: 'replied' 
-    });
 
     // Tạo nội dung email phản hồi
     const subject = `IT JOB - Phản hồi từ ${req.company.companyName}`;
@@ -722,12 +722,22 @@ module.exports.reply = async (req, res) => {
         
         <div style="background-color: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
           <h2 style="color: #333;">Phản hồi từ nhà tuyển dụng</h2>
-          <p style="font-size: 16px; color: #555;">Xin chào <strong>${cv.name}</strong>,</p>
+          <p style="font-size: 16px; color: #555;">Xin chào <strong>${
+            cv.name
+          }</strong>,</p>
           
           <div style="background-color: #f8f9fa; padding: 20px; border-left: 4px solid #2e5aac; margin: 20px 0;">
-            <p style="margin: 0;"><strong>Công ty:</strong> ${req.company.companyName}</p>
-            <p style="margin: 10px 0 0 0;"><strong>Email liên hệ:</strong> ${req.company.email}</p>
-            ${req.company.phone ? `<p style="margin: 10px 0 0 0;"><strong>Số điện thoại:</strong> ${req.company.phone}</p>` : ''}
+            <p style="margin: 0;"><strong>Công ty:</strong> ${
+              req.company.companyName
+            }</p>
+            <p style="margin: 10px 0 0 0;"><strong>Email liên hệ:</strong> ${
+              req.company.email
+            }</p>
+            ${
+              req.company.phone
+                ? `<p style="margin: 10px 0 0 0;"><strong>Số điện thoại:</strong> ${req.company.phone}</p>`
+                : ""
+            }
           </div>
           
           <div style="background-color: #fff; border: 1px solid #ddd; padding: 20px; border-radius: 6px; margin: 20px 0;">
@@ -751,9 +761,9 @@ module.exports.reply = async (req, res) => {
       </div>
     `;
 
-    // Gửi email phản hồi
+    // Gửi email phản hồi sử dụng sendMailHelper
     const nodemailer = require("nodemailer");
-    const transporter = nodemailer.createTransporter({
+    const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
         user: process.env.EMAIL_USER,
@@ -768,25 +778,25 @@ module.exports.reply = async (req, res) => {
       html: emailContent,
     };
 
-    transporter.sendMail(mailOptions, function (error, info) {
-      if (error) {
-        console.log("Error sending reply email:", error);
-        return res.status(500).json({ 
-          code: 500, 
-          message: "Lỗi khi gửi email phản hồi" 
-        });
-      } else {
-        console.log("Reply email sent: " + info.response);
-        res.status(200).json({ 
-          code: 200, 
-          message: "Phản hồi đã được gửi thành công" 
-        });
-      }
+    // Sử dụng async/await thay vì callback
+    await transporter.sendMail(mailOptions);
+
+    // Cập nhật trạng thái CV thành đã phản hồi
+    await Cv.findByIdAndUpdate(req.params.id, {
+      status: "replied",
     });
 
+    console.log("Reply email sent successfully");
+    res.status(200).json({
+      code: 200,
+      message: "Phản hồi đã được gửi thành công",
+    });
   } catch (error) {
-    console.error(error);
-    res.status(500).json("Lỗi server");
+    console.error("Error in reply CV:", error);
+    res.status(500).json({
+      code: 500,
+      message: "Lỗi server khi gửi phản hồi",
+    });
   }
 };
 
@@ -794,21 +804,24 @@ module.exports.reply = async (req, res) => {
 module.exports.getMyCvList = async (req, res) => {
   try {
     const UserCv = require("../models/user-cv.model");
-    const cvs = await UserCv.find({ 
-      idUser: req.user._id, 
-      deleted: false 
-    }).select('_id cvName createdAt cvUrl').sort({ createdAt: -1 });
-    
+    const cvs = await UserCv.find({
+      idUser: req.user._id,
+      deleted: false,
+    })
+      .select("_id cvName createdAt cvUrl")
+      .sort({ createdAt: -1 });
+
     res.status(200).json({
       code: 200,
       message: "Lấy danh sách CV thành công",
-      cvs: cvs
+      cvs: cvs,
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Lỗi server" });
   }
 };
+
 ```
 
 ### api\v1\controllers\job.controller.js
@@ -922,6 +935,90 @@ module.exports.index = async (req, res) => {
 };
 ```
 
+### api\v1\controllers\upload.controller.js
+```js
+// api/v1/controllers/upload.controller.js
+const uploadCloudinary = require("../../../helpers/uploadCloudinary");
+
+const index = async (req, res) => {
+  try {
+    console.log(req.body);
+    res.json({
+      location: req.body.file
+    });
+  } catch (error) {
+    console.log('error', error);
+  }
+}
+
+const uploadImage = async (req, res) => {
+  try {
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ error: "No file provided" });
+    }
+
+    const imageUrl = await uploadCloudinary(file.buffer);
+
+    return res.json({ url: imageUrl });
+  } catch (error) {
+    console.error("Upload error:", error);
+    res.status(500).json({ error: "Image upload failed" });
+  }
+};
+
+// Upload CV - chỉ chấp nhận PDF dưới 10MB
+const uploadCV = async (req, res) => {
+  try {
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ 
+        code: 400, 
+        message: "Vui lòng chọn file CV" 
+      });
+    }
+
+    if (file.mimetype !== "application/pdf") {
+      return res.status(400).json({ 
+        code: 400, 
+        message: "Chỉ chấp nhận file PDF" 
+      });
+    }
+
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      return res.status(400).json({ 
+        code: 400, 
+        message: "Kích thước file không được vượt quá 10MB" 
+      });
+    }
+
+    // 👇 Thêm tham số "raw" cho file PDF
+    const cvUrl = await uploadCloudinary(file.buffer, "raw");
+
+    return res.json({ 
+      code: 200,
+      message: "Upload CV thành công",
+      url: cvUrl 
+    });
+  } catch (error) {
+    console.error("Upload CV error:", error);
+    res.status(500).json({ 
+      code: 500, 
+      message: "Lỗi khi upload CV" 
+    });
+  }
+};
+
+module.exports = {
+  index,
+  uploadImage,
+  uploadCV
+};
+```
+
 ### api\v1\controllers\user.controller.js
 ```js
 const User = require("../models/user.model");
@@ -1020,6 +1117,85 @@ module.exports.checkEmailOtp = async (req, res) => {
   }
 };
 
+// Thêm vào cuối file api/v1/controllers/user.controller.js
+
+//[POST] /api/v1/users/auth/register/resendCheckEmailOtp
+module.exports.resendCheckEmailOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email: email });
+    if (!user) {
+      return res.status(400).json({ message: "Tài khoản không tồn tại" });
+    }
+    if (user.deleted === false) {
+      return res
+        .status(400)
+        .json({ message: "Tài khoản này đã được xác minh" });
+    }
+    const otp = generateHelper.generateRandomNumber();
+    await Otp.findOneAndDelete({ email: email, type: "register" });
+
+    const otpObject = {
+      email: email,
+      otp: otp,
+      type: "register",
+      expiresAt: Date.now(),
+    };
+    const otpCheck = new Otp(otpObject);
+    await otpCheck.save();
+    const subject = "IT JOB - Mã OTP xác minh tài khoản";
+    sendMailHelper.sendMail(email, subject, otp);
+    return res.status(200).json({ code: 200, message: "Mã OTP mới được gửi" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[POST] /api/v1/users/auth/register/cancel-register
+module.exports.cancelRegister = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email: email, deleted: true });
+    if (!user) {
+      return res.status(400).json({ message: "Email không tồn tại" });
+    }
+    await User.findOneAndDelete({ email: email, deleted: true });
+    await Otp.findOneAndDelete({ email: email });
+    res.status(200).json({ code: 200, message: "Hủy đăng ký thành công" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[POST] /api/v1/users/password/resendOtp
+module.exports.resendOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email: email, deleted: false });
+    if (!user) {
+      return res.status(400).json({ message: "Tài khoản không tồn tại" });
+    }
+    const otp = generateHelper.generateRandomNumber();
+    await Otp.findOneAndDelete({ email: email, type: "forgot" });
+
+    const otpObject = {
+      email: email,
+      otp: otp,
+      type: "forgot",
+      expiresAt: Date.now(),
+    };
+    const otpCheck = new Otp(otpObject);
+    await otpCheck.save();
+    const subject = "IT JOB - Mã OTP xác minh tài khoản";
+    sendMailHelper.sendMail(email, subject, otp);
+    return res.status(200).json({ code: 200, message: "Mã OTP mới được gửi" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
 
 
 //[POST] /api/v1/users/auth/login
@@ -1264,26 +1440,57 @@ module.exports.getMyCvs = async (req, res) => {
       deleted: false 
     }).sort({ createdAt: -1 });
     
-    res.status(200).json(cvs);
+    res.status(200).json({
+      code: 200,
+      message: "Lấy danh sách CV thành công",
+      cvs: cvs
+    });
   } catch (error) {
-    res.status(500).json("Lỗi server");
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
   }
 };
 
 //[POST] /api/v1/users/my-cvs/create
 module.exports.createMyCv = async (req, res) => {
   try {
+    const { cvName, cvUrl } = req.body;
+    
+    // Kiểm tra trùng tên CV
+    const existingCv = await UserCv.findOne({
+      idUser: req.user._id,
+      cvName: cvName,
+      deleted: false
+    });
+    
+    if (existingCv) {
+      return res.status(400).json({ 
+        code: 400, 
+        message: "Tên CV đã tồn tại, vui lòng chọn tên khác" 
+      });
+    }
+    
     req.body.idUser = req.user._id;
     const cv = await UserCv.create(req.body);
-    res.status(200).json({ code: 200, message: "Tạo CV thành công", cv: cv });
+    
+    res.status(200).json({ 
+      code: 200, 
+      message: "Tạo CV thành công", 
+      cv: cv 
+    });
   } catch (error) {
-    res.status(500).json("Lỗi server");
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
   }
 };
+
 
 //[PATCH] /api/v1/users/my-cvs/edit/:id
 module.exports.editMyCv = async (req, res) => {
   try {
+    const { cvName } = req.body;
+    
+    // Kiểm tra CV có tồn tại và thuộc về user không
     const cv = await UserCv.findOne({
       _id: req.params.id,
       idUser: req.user._id,
@@ -1291,7 +1498,27 @@ module.exports.editMyCv = async (req, res) => {
     });
     
     if (!cv) {
-      return res.status(404).json({ message: "Không tìm thấy CV" });
+      return res.status(404).json({ 
+        code: 404, 
+        message: "Không tìm thấy CV" 
+      });
+    }
+    
+    // Nếu đổi tên, kiểm tra trùng với CV khác
+    if (cvName && cvName !== cv.cvName) {
+      const existingCv = await UserCv.findOne({
+        idUser: req.user._id,
+        cvName: cvName,
+        deleted: false,
+        _id: { $ne: req.params.id } // Loại trừ CV đang sửa
+      });
+      
+      if (existingCv) {
+        return res.status(400).json({ 
+          code: 400, 
+          message: "Tên CV đã tồn tại, vui lòng chọn tên khác" 
+        });
+      }
     }
     
     const updatedCv = await UserCv.findByIdAndUpdate(
@@ -1306,7 +1533,35 @@ module.exports.editMyCv = async (req, res) => {
       cv: updatedCv 
     });
   } catch (error) {
-    res.status(500).json("Lỗi server");
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
+  }
+};
+
+//[GET] /api/v1/users/my-cvs/detail/:id
+module.exports.getMyCvDetail = async (req, res) => {
+  try {
+    const cv = await UserCv.findOne({
+      _id: req.params.id,
+      idUser: req.user._id,
+      deleted: false,
+    });
+    
+    if (!cv) {
+      return res.status(404).json({ 
+        code: 404, 
+        message: "Không tìm thấy CV" 
+      });
+    }
+    
+    res.status(200).json({
+      code: 200,
+      message: "Lấy thông tin CV thành công",
+      cv: cv
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
   }
 };
 
@@ -1320,7 +1575,23 @@ module.exports.deleteMyCv = async (req, res) => {
     });
     
     if (!cv) {
-      return res.status(404).json({ message: "Không tìm thấy CV" });
+      return res.status(404).json({ 
+        code: 404, 
+        message: "Không tìm thấy CV" 
+      });
+    }
+    
+    // Kiểm tra xem CV có đang được sử dụng trong bất kỳ đơn ứng tuyển nào không
+    const cvInUse = await Cv.findOne({
+      selectedCvId: req.params.id,
+      deleted: false
+    });
+    
+    if (cvInUse) {
+      return res.status(400).json({
+        code: 400,
+        message: "CV đang được sử dụng trong đơn ứng tuyển, không thể xóa"
+      });
     }
     
     await UserCv.findByIdAndUpdate(req.params.id, {
@@ -1328,9 +1599,13 @@ module.exports.deleteMyCv = async (req, res) => {
       deletedAt: new Date(),
     });
     
-    res.status(200).json({ code: 200, message: "Xóa CV thành công" });
+    res.status(200).json({ 
+      code: 200, 
+      message: "Xóa CV thành công" 
+    });
   } catch (error) {
-    res.status(500).json("Lỗi server");
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
   }
 };
 
@@ -1340,11 +1615,41 @@ module.exports.getSentCvs = async (req, res) => {
     const cvs = await Cv.find({ 
       idUser: req.user._id, 
       deleted: false 
-    }).sort({ createdAt: -1 });
+    }).sort({ createdAt: -1 }).populate({
+      path: 'idJob',
+      select: 'name'
+    }
+    ).populate({
+      path: 'idCompany',
+      select: 'companyName'
+    });
     
     res.status(200).json(cvs);
   } catch (error) {
     res.status(500).json("Lỗi server");
+  }
+};
+
+//[GET] /api/v1/users/sent-cvs/detail/:id
+module.exports.getSentCvDetail = async (req, res) => {
+  try {
+    const cv = await Cv.findOne({
+      _id: req.params.id,
+      idUser: req.user._id,
+      deleted: false,
+    });
+    
+    if (!cv) {
+      return res.status(404).json({ 
+        code: 404, 
+        message: "Không tìm thấy CV" 
+      });
+    }
+    
+    res.status(200).json(cv);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi server" });
   }
 };
 
@@ -1378,6 +1683,7 @@ module.exports.withdrawCv = async (req, res) => {
     res.status(500).json("Lỗi server");
   }
 };
+
 ```
 
 ### api\v1\middlewares\auth.middleware.js
@@ -1517,15 +1823,20 @@ const cvSchema = new Schema({
     description: String,
     status: {
         type: String,
-        enum: ['unread', 'read', 'replied'], // unread: chưa đọc, read: đã đọc, replied: đã phản hồi
+        enum: ['unread', 'read', 'replied'],
         default: 'unread'
     },
     linkProject: String,
-    linkCV: String, // URL của CV được gửi
-    selectedCvId: String, // ID của CV từ user_cvs collection (nếu user đã đăng ký)
-    idCompany: String,
-    idJob: String,
-    idUser: String, // ID của user (null nếu là khách vãng lai)
+    linkCV: String, // URL của CV - bắt buộc cho cả user và guest
+    idCompany: {
+        type: Schema.Types.ObjectId,
+        ref: "Company"
+    },
+    idJob: {
+        type: Schema.Types.ObjectId,
+        ref: "Job"
+    },
+    idUser: String, // null nếu là khách vãng lai
     deleted: {
         type: Boolean,
         default: false
@@ -1781,6 +2092,7 @@ const companyRoutes = require("./company.route");
 const tagRoutes = require("./tag.route");
 const cvRoutes = require("./cv.route");
 const userRoutes = require("./user.route");
+const uploadRoutes = require("./upload.route");
 
 module.exports = (app) => {
     const version = "/api/v1";
@@ -1791,6 +2103,7 @@ module.exports = (app) => {
     app.use(version + "/tags", tagRoutes);
     app.use(version + "/cv", cvRoutes);
     app.use(version + "/users", userRoutes);
+    app.use(version + "/upload", uploadRoutes);
 }
 ```
 
@@ -1822,6 +2135,31 @@ const router = express.Router();
 const tagController = require("../controllers/tag.controller");
 
 router.get("/", tagController.index); 
+
+module.exports = router;
+```
+
+### api\v1\routes\upload.route.js
+```js
+// api/v1/routes/upload.route.js
+const { Router } = require("express");
+const multer = require("multer");
+const router = Router();
+const upload = multer();
+const uploadCloud = require("../../../middlewares/uploadCloud.middlewares");
+const uploadController = require("../controllers/upload.controller");
+
+router.post(
+  "/",
+  upload.single("file"),
+  uploadCloud.uploadSingle,
+  uploadController.index
+);
+
+router.post("/image", upload.single("file"), uploadController.uploadImage);
+
+// Route upload CV - chỉ chấp nhận PDF dưới 10MB
+router.post("/cv", upload.single("file"), uploadController.uploadCV);
 
 module.exports = router;
 ```
@@ -1871,10 +2209,12 @@ router.post("/password/reset", userValidator.checkResetPassword, userController.
 router.get("/my-cvs", userAuthMiddleware.requireAuth, userController.getMyCvs);
 router.post("/my-cvs/create", userAuthMiddleware.requireAuth, userValidator.checkMyCv, userController.createMyCv);
 router.patch("/my-cvs/edit/:id", userAuthMiddleware.requireAuth, userValidator.checkMyCv, userController.editMyCv);
+router.get("/my-cvs/detail/:id", userAuthMiddleware.requireAuth, userController.getMyCvDetail);
 router.delete("/my-cvs/delete/:id", userAuthMiddleware.requireAuth, userController.deleteMyCv);
 
 // Sent CVs management routes
 router.get("/sent-cvs", userAuthMiddleware.requireAuth, userController.getSentCvs);
+router.get("/sent-cvs/detail/:id", userAuthMiddleware.requireAuth, userController.getSentCvDetail);
 router.delete("/sent-cvs/withdraw/:id", userAuthMiddleware.requireAuth, userController.withdrawCv);
 
 module.exports = router;
@@ -2177,6 +2517,7 @@ module.exports.checkCreateCV = (req, res, next) => {
           message: "Vui lòng chọn CV từ danh sách của bạn" 
         });
       }
+      // ✅ Không validate linkCV vì sẽ tự động copy từ selectedCV
       if (linkCV) {
         return res.status(400).json({ 
           code: 400, 
@@ -2208,7 +2549,8 @@ module.exports.checkCreateCV = (req, res, next) => {
       checkLength("Link dự án", linkProject, 5, 500),
     ];
 
-    if (linkCV) {
+    // ✅ Chỉ validate linkCV nếu là khách vãng lai
+    if (!idUser && linkCV) {
       validations.push(checkLength("Link CV", linkCV, 5, 500));
     }
 
@@ -2426,18 +2768,14 @@ const checkChangePassword = (req, res, next) => {
 
 // Kiểm tra chỉnh sửa user - UPDATED to include linkProject validation
 const checkEditUser = (req, res, next) => {
-  const { fullName, phone, email, city, address, description, linkProject } = req.body;
+  const { fullName, phone, email, city, address, description, linkProject, avatar } = req.body;
 
   if (email !== req.user.email) {
-    return res
-      .status(400)
-      .json({ code: 400, message: "Không được thay đổi email" });
+    return res.status(400).json({ code: 400, message: "Không được thay đổi email" });
   }
 
   if (!fullName || !phone) {
-    return res
-      .status(400)
-      .json({ code: 400, message: "Chưa nhập đủ thông tin yêu cầu" });
+    return res.status(400).json({ code: 400, message: "Chưa nhập đủ thông tin yêu cầu" });
   }
 
   const validations = [
@@ -2448,15 +2786,29 @@ const checkEditUser = (req, res, next) => {
   if (city) {
     validations.push(checkLength("Thành phố", city, 1, 100));
   }
+
   if (address) {
     validations.push(checkLength("Địa chỉ", address, 5, 200));
   }
+
   if (description) {
     validations.push(checkLength("Mô tả", description, 10, 1000));
   }
-  // NEW: Add linkProject validation
+
   if (linkProject) {
     validations.push(checkLength("Link dự án", linkProject, 5, 500));
+  }
+
+  // ✅ NEW: Avatar validation (URL format + length)
+  if (avatar) {
+    const urlPattern = /^(https?:\/\/)[^\s$.?#].[^\s]*$/i; // kiểm tra định dạng URL
+    if (!urlPattern.test(avatar)) {
+      return res.status(400).json({ code: 400, message: "Avatar phải là đường dẫn URL hợp lệ" });
+    }
+    const lengthError = checkLength("Avatar", avatar, 5, 500);
+    if (lengthError) {
+      return res.status(400).json({ code: 400, message: lengthError });
+    }
   }
 
   const error = validations.find((msg) => msg !== null);
@@ -2466,6 +2818,7 @@ const checkEditUser = (req, res, next) => {
 
   next();
 };
+
 
 // Kiểm tra tạo/sửa CV cá nhân
 const checkMyCv = (req, res, next) => {
@@ -2508,7 +2861,7 @@ const mongoose = require("mongoose");
 module.exports.connect = async () => {
     try {
         await mongoose.connect(process.env.MONGO_URL);
-        console.log("Connected to MongoDB");
+        console.log("✅ Connected to MongoDB");
     } catch (error) {
         console.error("Error connecting to MongoDB:", error);
     }
@@ -2596,4 +2949,92 @@ module.exports.sendMail = (email, subject, otpCode) => {
   });
 };
 
+```
+
+### helpers\uploadCloudinary.js
+```js
+const cloudinary = require("cloudinary").v2;
+const streamifier = require("streamifier");
+
+cloudinary.config({
+  cloud_name: process.env.CLOUD_NAME,
+  api_key: process.env.CLOUD_KEY,
+  api_secret: process.env.CLOUD_SECRET,
+});
+
+const streamUpload = (buffer, resourceType = "auto") => {
+  return new Promise((resolve, reject) => {
+    const uploadOptions = {
+      resource_type: resourceType,
+      unique_filename: true, //  tự động tạo tên file unique
+      use_filename: false,
+    };
+
+    // Thêm folder tùy theo loại file
+    if (resourceType === "raw") {
+      uploadOptions.folder = "ITJOB_File";
+      uploadOptions.format = "pdf";
+    } else {
+      uploadOptions.folder = process.env.CLOUDINARY_FOLDER || "ITJOB_Images";
+    }
+
+    const stream = cloudinary.uploader.upload_stream(
+      uploadOptions,
+      (error, result) => {
+        if (result) {
+          resolve(result);
+        } else {
+          reject(error);
+        }
+      }
+    );
+
+    streamifier.createReadStream(buffer).pipe(stream);
+  });
+};
+
+const uploadCloudinary = async (buffer, resourceType = "auto") => {
+  const result = await streamUpload(buffer, resourceType);
+  return result.secure_url;
+};
+
+module.exports = uploadCloudinary;
+
+```
+
+### middlewares\uploadCloud.middlewares.js
+```js
+const uploadToCloudinary = require("../helpers/uploadCloudinary");
+
+const uploadSingle = async (req, res, next) => {
+  if (req.file) {
+    const result = await uploadToCloudinary(req.file.buffer); // THÊM AWAIT
+    req.body[req.file.fieldname] = result;
+  }
+  next();
+};
+
+const uploadFields = async (req, res, next) => {
+  const files = req.files;
+  console.log('files', files);
+  for (const key in files) {
+    req.body[key] = [];
+    const array = files[key];
+    for (const item of array) {
+      try {
+        const result = await uploadToCloudinary(item.buffer);
+        req.body[key].push(result);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  }
+
+  next();
+};
+
+module.exports = {
+  uploadSingle,
+  uploadFields
+};
 ```
