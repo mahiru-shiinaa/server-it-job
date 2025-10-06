@@ -2,11 +2,20 @@ const nodemailer = require("nodemailer");
 
 module.exports.sendMail = (email, subject, otpCode) => {
   const transporter = nodemailer.createTransport({
-    service: "gmail",
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false, // true cho port 465, false cho 587
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASSWORD,
     },
+    tls: {
+      rejectUnauthorized: false
+    },
+    // Thêm các timeout
+    connectionTimeout: 10000, // 10 giây
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
   });
 
   const mailOptions = {
@@ -43,7 +52,6 @@ module.exports.sendMail = (email, subject, otpCode) => {
       console.log(error);
     } else {
       console.log("Email sent: " + info.response);
-      // do something useful
     }
   });
 };
